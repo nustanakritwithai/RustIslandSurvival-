@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: last-short-island
+    runtime: node
+    plan: free            # change to "starter" if you want the server to never sleep
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
