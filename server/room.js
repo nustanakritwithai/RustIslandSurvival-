@@ -22,6 +22,8 @@ export class GameRoom {
     this.players = new Map(); // id -> {ws,name,x,y,dir,hp,carrying,last}
     this.bots = [];
     this.deadNodes = new Map(); // node index -> respawn-at ms (shared resource depletion)
+    this.builds = new Map();    // id -> {id,t,x,y,hp} shared walls/doors (shared forts)
+    this._bid = 1;
     this.beacon = newBeacon();
     this.board = new Leaderboard();
     this.slot = slotInfo();
@@ -43,6 +45,7 @@ export class GameRoom {
       slot: slotInfo(),
       board: this.board.list(),
       nodes: [...this.deadNodes.keys()], // currently depleted nodes (for mid-round joiners)
+      builds: [...this.builds.values()], // shared walls/doors already standing
     }));
   }
 
@@ -97,8 +100,34 @@ export class GameRoom {
         this.deadNodes.set(i, Date.now() + rt * 1000);
         this.broadcast({ t: "event", kind: "node", data: { i, dead: true } });
       }
+    } else if (m.t === "build") {
+      this.handleBuild(m);
     } else if (m.t === "ping") {
       ws.send(encode({ t: "pong" }));
+    }
+  }
+
+  // Shared walls/doors so forts are visible to everyone (and, later, so
+  // server-side monsters can path around them).
+  handleBuild(m) {
+    if (m.op === "add") {
+      const bt = m.bt === "door" ? "door" : m.bt === "wall" ? "wall" : null;
+      if (!bt) return;
+      const x = clamp(Math.round(+m.x || 0), 0, WORLD.W);
+      const y = clamp(Math.round(+m.y || 0), 0, WORLD.H);
+      // no stacking on the same tile
+      for (const b of this.builds.values()) {
+        if (Math.abs(b.x - x) < 8 && Math.abs(b.y - y) < 8) return;
+      }
+      if (this.builds.size > 4000) return; // hard cap
+      const b = { id: this._bid++, t: bt, x, y, hp: bt === "wall" ? 300 : 200 };
+      this.builds.set(b.id, b);
+      this.broadcast({ t: "event", kind: "build", data: { op: "add", b } });
+    } else if (m.op === "del") {
+      const id = m.id | 0;
+      if (this.builds.delete(id)) {
+        this.broadcast({ t: "event", kind: "build", data: { op: "del", id } });
+      }
     }
   }
 
@@ -245,6 +274,7 @@ export class GameRoom {
       this.resolveEnd();
       this.beacon = newBeacon();
       this.deadNodes.clear(); // fresh island next round
+      this.builds.clear();    // forts don't carry across rounds
       this.slot = s;
       this.spawnBots();
       this.refreshBots();

@@ -1316,11 +1316,11 @@ function doEdit(){
   if(!t){toast("ไม่มีสิ่งปลูกสร้างใกล้ ๆ");return;}
   if(G.editMode==="demolish"){
     if(t.kind==="core"){G.core=null;invAdd("territory_core",1);toast("รื้อเสาเขตแดน (ฐานหมดเขตครอบครอง)");}
-    else{const id=BUILD_ITEM[t.b.type];G.buildings.splice(t.idx,1);if(id)invAdd(id,1);toast("รื้อถอน"+(id?ITEMS[id].nm:"")+"แล้ว");}
+    else{const id=BUILD_ITEM[t.b.type];if(t.b.net&&t.b.nid!=null)netSend({t:"build",op:"del",id:t.b.nid});G.buildings.splice(t.idx,1);if(id)invAdd(id,1);toast("รื้อถอน"+(id?ITEMS[id].nm:"")+"แล้ว");}
     nudgeOutOfWalls();save();
   }else if(G.editMode==="move"){
     if(t.kind==="core"){G.core=null;invAdd("territory_core",1);G.buildMode="territory_core";}
-    else{const id=BUILD_ITEM[t.b.type];G.buildings.splice(t.idx,1);if(id){invAdd(id,1);G.buildMode=id;}}
+    else{const id=BUILD_ITEM[t.b.type];if(t.b.net&&t.b.nid!=null)netSend({t:"build",op:"del",id:t.b.nid});G.buildings.splice(t.idx,1);if(id){invAdd(id,1);G.buildMode=id;}}
     G.editMode=null;nudgeOutOfWalls();save();toast("ยกขึ้นแล้ว — กด \"วาง\" เพื่อวางตำแหน่งใหม่");
   }
 }
@@ -1367,10 +1367,14 @@ function placeBuild(){
   // don't stack two structures on the same tile
   if(G.buildings.some(b=>Math.abs(b.x-px)<8&&Math.abs(b.y-py)<8)){toast("ตรงนี้มีของวางอยู่แล้ว");return;}
   if(!G.core||dist2(px,py,G.core.x,G.core.y)>G.core.r*G.core.r){toast("ต้องวางในเขตแดน");return;}
+  const isFort=(def.place==="wall"||def.place==="door");
+  const sharedFort=isFort&&window.NET&&NET.connected; // walls/doors are shared online
   G.buildings.push({type:def.place,x:px,y:py,hp:def.place==="wall"?300:200,open:false,
     ...(def.place==="turret"?{ammo:0,cd:0,angle:0}:{}),
-    ...(def.place==="table"?{tier:1}:{})});
+    ...(def.place==="table"?{tier:1}:{}),
+    ...(sharedFort?{net:true,pending:true,nid:null}:{})});
   invRemove(id,1);
+  if(sharedFort)netSend({t:"build",op:"add",bt:def.place,x:px,y:py});
   if(def.place==="wall"||def.place==="door")nudgeOutOfWalls(); // safety: never trap the player
   // keep placing if it's a stackable structure and you still have more
   if(def.stack>1 && invCount(id)>0){sfx("build");toast("วาง"+def.nm+" (เหลือ "+invCount(id)+") — วางต่อได้เลย");save();return;}
@@ -1690,7 +1694,7 @@ const store={
   }
 };
 async function save(){
-  const data={storage:G.storage,banked:G.banked,buildings:G.buildings.filter(b=>!b.bot),core:G.core,
+  const data={storage:G.storage,banked:G.banked,buildings:G.buildings.filter(b=>!b.bot&&!b.net),core:G.core,
     bestRun:G.bestRun,equip:G.equip,hotbar:G.hotbar,safe:G.player.safe,name:G.playerName};
   await store.set(KEY,JSON.stringify(data),false);
 }
@@ -1774,8 +1778,9 @@ function blockedAt(x,y){
   return false;
 }
 function autoDoors(){
-  const p=G.player;
-  for(const b of G.buildings){if(b.type==="door"){b.open=dist2(b.x,b.y,p.x,p.y)<60*60;}}
+  const pts=[{x:G.player.x,y:G.player.y}];
+  if(window.NET&&NET.connected)NET.players.forEach(e=>pts.push({x:e.x,y:e.y})); // shared doors open for any player
+  for(const b of G.buildings){if(b.type==="door"){b.open=pts.some(pt=>dist2(b.x,b.y,pt.x,pt.y)<60*60);}}
 }
 
 /* ---------- input ---------- */

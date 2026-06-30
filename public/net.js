@@ -105,6 +105,7 @@
       NET.id = m.id;
       if (m.slot) applyWorldSeed(m.slot.seed);
       if (m.nodes) applyDeadNodes(m.nodes); // depleted nodes already harvested this round
+      if (m.builds) applyBuilds(m.builds);  // shared walls/doors already standing
       if (m.board) { NET.board = m.board; refreshBoardUI(); }
     } else if (m.t === "snapshot") {
       applySnapshot(m);
@@ -159,9 +160,13 @@
       onServerWin(d);
     } else if (m.kind === "node") {
       setNodeDead(d.i, d.dead);
+    } else if (m.kind === "build") {
+      if (d.op === "add") addNetBuild(d.b);
+      else if (d.op === "del") delNetBuild(d.id);
     } else if (m.kind === "reset") {
       NET.serverBeacon = { state: "none" };
       if (typeof G !== "undefined") {
+        if (G.buildings) G.buildings = G.buildings.filter(function (b) { return !b.net; }); // forts cleared each round
         if (d.slot && d.slot.id) G.round.slot = d.slot.id;
         if (d.slot) applyWorldSeed(d.slot.seed); // new round -> regenerate the shared island
         if (G.round.active) G.beacon = { state: "none" };
@@ -208,6 +213,25 @@
   function applyDeadNodes(list) {
     for (var i = 0; i < list.length; i++) setNodeDead(list[i], true);
   }
+
+  // Shared walls/doors (forts). Represented in G.buildings with net:true + nid.
+  function addNetBuild(b) {
+    if (typeof G === "undefined" || !G.buildings || !b) return;
+    if (G.buildings.some(function (x) { return x.nid === b.id; })) return; // already have it
+    // reconcile a locally-placed optimistic build at the same spot
+    var pend = G.buildings.find(function (x) {
+      return x.net && x.pending && x.nid == null &&
+        Math.abs(x.x - b.x) < 8 && Math.abs(x.y - b.y) < 8;
+    });
+    if (pend) { pend.nid = b.id; pend.pending = false; return; }
+    G.buildings.push({ type: b.t, x: b.x, y: b.y, hp: b.hp, maxhp: b.hp, open: false, net: true, nid: b.id });
+  }
+  function delNetBuild(id) {
+    if (typeof G === "undefined" || !G.buildings) return;
+    var i = G.buildings.findIndex(function (x) { return x.nid === id; });
+    if (i >= 0) G.buildings.splice(i, 1);
+  }
+  function applyBuilds(list) { for (var i = 0; i < list.length; i++) addNetBuild(list[i]); }
 
   // Regenerate the local island when the server's shared seed changes.
   function applyWorldSeed(seed) {
