@@ -280,7 +280,15 @@
       spawnFx(d.x, d.y, 6, "#c4452f", { spMin: 40, spMax: 120, grav: 140, lifeMin: 0.25, lifeMax: 0.5 });
     if (d.killer && d.killer === NET.id) {
       if (G.stats) G.stats.kills++;
-      if (G.loot) G.loot.push({ x: d.x, y: d.y, items: [{ id: "raw_meat", n: 1 }], t: 60, wolf: true });
+      // drop loot by kind (meat + animal hide + bear ore), matching the offline game
+      var m = (typeof MOB_TYPES !== "undefined") ? MOB_TYPES[d.kind] : null;
+      var drop = [];
+      if (m) {
+        var mt = ri(m.meat[0], m.meat[1]); if (mt > 0) drop.push({ id: "raw_meat", n: mt });
+        if (Math.random() < m.hide) drop.push({ id: "animal_hide", n: 1 });
+        if (d.kind === "bear" && Math.random() < 0.5) drop.push({ id: "iron_ore", n: ri(1, 2) });
+      } else { drop.push({ id: "raw_meat", n: 1 }); }
+      if (drop.length && G.loot) G.loot.push({ x: d.x, y: d.y, items: drop, t: 60, wolf: true });
     }
   }
 

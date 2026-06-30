@@ -26,11 +26,12 @@ const MOBS = {
   bear: { hp: 85, sp: 74, dmg: 22, r: 19, detect: 300 },
 };
 function pickKind() {
+  // weighted toward low-level wolves/boars (they drop animal hide)
   const r = Math.random();
-  if (r < 0.6) return "wolf";
-  if (r < 0.78) return "boar";
-  if (r < 0.9) return "bat";
-  if (r < 0.97) return "scorpion";
+  if (r < 0.55) return "wolf";   // hide 0.6
+  if (r < 0.85) return "boar";   // hide 0.8
+  if (r < 0.92) return "bat";
+  if (r < 0.98) return "scorpion";
   return "bear";
 }
 const botName = () => BOT_NAMES_A[ri(0, BOT_NAMES_A.length - 1)] + BOT_NAMES_B[ri(0, BOT_NAMES_B.length - 1)];
@@ -273,11 +274,11 @@ export class GameRoom {
 
   mobTick(dt, s) {
     const esc = s.remain > 240 ? 0.3 : s.remain > 120 ? 0.6 : s.remain > 60 ? 0.85 : 1;
-    const cap = Math.round(8 + esc * 14) + Math.min(12, this.players.size * 3);
+    const cap = Math.round(12 + esc * 14) + Math.min(12, this.players.size * 3);
     const anyone = this.players.size + this.bots.length > 0;
 
     // spawn over time, away from players, in open ground
-    if (anyone && this.mobs.length < cap && Math.random() < dt * (1.0 + esc * 2.0)) {
+    if (anyone && this.mobs.length < cap && Math.random() < dt * (1.6 + esc * 2.2)) {
       for (let k = 0; k < 12; k++) {
         const x = rand(120, WORLD.W - 120), y = rand(120, WORLD.H - 120);
         if (this.mobBlocked(x, y)) continue;
