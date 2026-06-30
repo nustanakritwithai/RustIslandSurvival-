@@ -837,6 +837,7 @@ function netWolfTick(dt){
     if(w.nid==null)continue;
     if(w.tx!=null){w.x+=(w.tx-w.x)*k;w.y+=(w.ty-w.y)*k;}
     w.hitT=Math.max(0,w.hitT-dt);w.dmgT=Math.max(0,w.dmgT-dt);
+    if(!w.aggro)continue; // passive monsters never attack first
     const m=MOB_TYPES[w.kind]||MOB_TYPES.wolf;
     if(w.hitT<=0&&!G.dead&&dist2(w.x,w.y,p.x,p.y)<(m.r+15)*(m.r+15)){
       damagePlayer(m.dmg,w.x,w.y);w.hitT=1.1;

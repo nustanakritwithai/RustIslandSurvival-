@@ -170,6 +170,8 @@
         G.wolves.push(w);
       }
       w.tx = sm.x; w.ty = sm.y; w.dir = sm.dir; w.maxhp = sm.maxhp; w.hp = sm.hp;
+      w.aggro = !!sm.ag;                 // only provoked monsters attack
+      w.state = sm.ag ? "chase" : "wander"; // drives the angry render colour
     }
     NET.mobById.forEach(function (w, id) {
       if (!seen[id]) { removeFrom(G.wolves, w); NET.mobById.delete(id); }

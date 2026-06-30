@@ -18,21 +18,48 @@ const ri = (a, b) => Math.floor(rand(a, b + 1));
 
 // Minimal monster stats (positions/HP/AI are authoritative here; the client
 // renders kind-specific visuals). Server AI is simplified to chase + siege.
+// zone = the biome risk a monster belongs to; w = spawn weight (low-level heavy)
 const MOBS = {
-  wolf: { hp: 18, sp: 96, dmg: 7, r: 13, detect: 300 },
-  boar: { hp: 40, sp: 70, dmg: 15, r: 16, detect: 280 },
-  bat: { hp: 9, sp: 130, dmg: 4, r: 9, detect: 430 },
-  scorpion: { hp: 32, sp: 104, dmg: 12, r: 14, detect: 330 },
-  bear: { hp: 85, sp: 74, dmg: 22, r: 19, detect: 300 },
+  wolf: { hp: 18, sp: 96, dmg: 7, r: 13, zone: 1, w: 0.5 },
+  boar: { hp: 40, sp: 70, dmg: 15, r: 16, zone: 1, w: 0.3 },
+  bat: { hp: 9, sp: 130, dmg: 4, r: 9, zone: 1, w: 0.12 },
+  bear: { hp: 85, sp: 74, dmg: 22, r: 19, zone: 2, w: 0.1 },
+  scorpion: { hp: 32, sp: 104, dmg: 12, r: 14, zone: 3, w: 0.08 },
 };
-function pickKind() {
-  // weighted toward low-level wolves/boars (they drop animal hide)
-  const r = Math.random();
-  if (r < 0.55) return "wolf";   // hide 0.6
-  if (r < 0.85) return "boar";   // hide 0.8
-  if (r < 0.92) return "bat";
-  if (r < 0.98) return "scorpion";
-  return "bear";
+// pick a monster kind that belongs in a biome of the given risk level
+function pickKindForRisk(risk) {
+  const pool = []; let tot = 0;
+  for (const k in MOBS) { if (MOBS[k].zone <= risk) { pool.push([k, MOBS[k].w]); tot += MOBS[k].w; } }
+  if (!pool.length) return null;
+  let r = Math.random() * tot;
+  for (const [k, w] of pool) { r -= w; if (r <= 0) return k; }
+  return pool[0][0];
+}
+
+// Island biomes (mirrors the client ZONES). Each (x,y,w,h) rect has a risk level;
+// monsters spawn and roam only in biomes matching their zone.
+const ZONES = [
+  { x: 2850, y: 1920, w: 700, h: 560, risk: 0 },   // base
+  { x: 0, y: 0, w: WORLD.W, h: 360, risk: 0 },      // beaches
+  { x: 0, y: WORLD.H - 360, w: WORLD.W, h: 360, risk: 0 },
+  { x: 0, y: 360, w: 320, h: WORLD.H - 720, risk: 0 },
+  { x: WORLD.W - 320, y: 360, w: 320, h: WORLD.H - 720, risk: 0 },
+  { x: 320, y: 360, w: WORLD.W - 640, h: WORLD.H - 720, risk: 1 }, // forest
+  { x: 640, y: 1560, w: 1500, h: 1280, risk: 2 },   // mine west
+  { x: WORLD.W - 2140, y: 1560, w: 1500, h: 1280, risk: 2 }, // mine east
+  { x: 2380, y: 560, w: 1640, h: 1080, risk: 2 },   // swamp
+  { x: 2380, y: WORLD.H - 1640, w: 1640, h: 1080, risk: 3 }, // ashlands
+];
+// matches client zoneAt: base first, then the smallest matching biome wins
+function zoneInfoAt(x, y) {
+  const inZ = (z) => x >= z.x && x < z.x + z.w && y >= z.y && y < z.y + z.h;
+  if (inZ(ZONES[0])) return ZONES[0];
+  let pick = null;
+  for (let i = 1; i < ZONES.length; i++) {
+    const z = ZONES[i];
+    if (inZ(z) && (!pick || z.w * z.h < pick.w * pick.h)) pick = z;
+  }
+  return pick || { x: 0, y: 0, w: WORLD.W, h: WORLD.H, risk: 0 };
 }
 const botName = () => BOT_NAMES_A[ri(0, BOT_NAMES_A.length - 1)] + BOT_NAMES_B[ri(0, BOT_NAMES_B.length - 1)];
 
@@ -130,6 +157,8 @@ export class GameRoom {
       const i = this.mobs.findIndex((x) => x.id === id);
       if (i >= 0) {
         this.mobs[i].hp -= dmg;
+        this.mobs[i].aggroId = ws.id; // provoked: now it fights back and chases you
+        this.mobs[i].aggroT = 8;
         if (this.mobs[i].hp <= 0) {
           const dead = this.mobs.splice(i, 1)[0];
           this.broadcast({
@@ -268,58 +297,53 @@ export class GameRoom {
     if (sx > 0.2) mob.dir = 1; else if (sx < -0.2) mob.dir = -1;
   }
 
-  nearestTarget(mob) {
-    let best = null, bd = Infinity;
-    const consider = (e) => { const d = dist2(mob.x, mob.y, e.x, e.y); if (d < bd) { bd = d; best = e; } };
-    for (const p of this.players.values()) consider(p);
-    for (const b of this.bots) consider(b);
-    return best;
-  }
-
   mobTick(dt, s) {
     const esc = s.remain > 240 ? 0.3 : s.remain > 120 ? 0.6 : s.remain > 60 ? 0.85 : 1;
     const cap = Math.round(12 + esc * 14) + Math.min(12, this.players.size * 3);
     const anyone = this.players.size + this.bots.length > 0;
 
-    // spawn over time, away from players, in open ground
+    // spawn in the right biome for the kind, away from players, in open ground
     if (anyone && this.mobs.length < cap && Math.random() < dt * (1.6 + esc * 2.2)) {
-      for (let k = 0; k < 12; k++) {
+      for (let k = 0; k < 14; k++) {
         const x = rand(120, WORLD.W - 120), y = rand(120, WORLD.H - 120);
         if (this.mobBlocked(x, y, 60)) continue; // keep spawns clear of walls/forts
+        const zi = zoneInfoAt(x, y);
+        if (zi.risk < 1) continue;               // no monsters on beach / base / sea
+        const kind = pickKindForRisk(zi.risk);
+        if (!kind) continue;
         let near = false;
-        for (const p of this.players.values()) { if (dist2(x, y, p.x, p.y) < 360 ** 2) { near = true; break; } }
+        for (const p of this.players.values()) { if (dist2(x, y, p.x, p.y) < 240 ** 2) { near = true; break; } }
         if (near) continue;
-        const kind = pickKind();
-        this.mobs.push({ id: this._mid++, kind, x, y, dir: 1, hp: MOBS[kind].hp, maxhp: MOBS[kind].hp, t: rand(1, 3), tx: x, ty: y });
+        this.mobs.push({
+          id: this._mid++, kind, x, y, dir: 1, hp: MOBS[kind].hp, maxhp: MOBS[kind].hp,
+          t: rand(1, 3), tx: x, ty: y,
+          zr: { x: zi.x, y: zi.y, w: zi.w, h: zi.h, risk: zi.risk }, // home biome to roam within
+          aggroId: null, aggroT: 0,
+        });
         break;
       }
     }
 
     for (const mob of this.mobs) {
       const st = MOBS[mob.kind] || MOBS.wolf;
-      // chase the nearest survivor only when within detection range (avoidable,
-      // like the original). The beacon is NOT a target — monsters never swarm it.
-      const t = this.nearestTarget(mob);
-      const sees = t && dist2(mob.x, mob.y, t.x, t.y) < st.detect * st.detect;
+      mob.aggroT = Math.max(0, (mob.aggroT || 0) - dt);
+      // Passive by default: monsters roam their own biome and ignore players.
+      // They only chase the player who provoked them (hit them), for a while.
+      const prey = mob.aggroT > 0 && mob.aggroId ? this.players.get(mob.aggroId) : null;
       let tx, ty;
-      if (sees) { tx = t.x; ty = t.y; }
-      else { // wander, drifting gently toward the nearest survivor so the island isn't dead
+      if (prey) { tx = prey.x; ty = prey.y; }
+      else { // wander within the home biome rect
         mob.t -= dt;
         if (mob.t <= 0) {
-          mob.t = rand(2, 4);
-          if (t) {
-            const ang = Math.atan2(t.y - mob.y, t.x - mob.x) + rand(-0.9, 0.9);
-            mob.tx = clamp(mob.x + Math.cos(ang) * 220, 60, WORLD.W - 60);
-            mob.ty = clamp(mob.y + Math.sin(ang) * 220, 60, WORLD.H - 60);
-          } else {
-            mob.tx = clamp(mob.x + rand(-180, 180), 60, WORLD.W - 60);
-            mob.ty = clamp(mob.y + rand(-180, 180), 60, WORLD.H - 60);
-          }
+          mob.t = rand(2, 5);
+          const zr = mob.zr || { x: 0, y: 0, w: WORLD.W, h: WORLD.H };
+          mob.tx = clamp(mob.x + rand(-200, 200), zr.x + 30, zr.x + zr.w - 30);
+          mob.ty = clamp(mob.y + rand(-200, 200), zr.y + 30, zr.y + zr.h - 30);
         }
         tx = mob.tx; ty = mob.ty;
       }
       const dx = tx - mob.x, dy = ty - mob.y, d = Math.hypot(dx, dy) || 1;
-      const sp = sees ? st.sp : 42;
+      const sp = prey ? st.sp : 36;
       if (d > 4) this.mobMove(mob, dx / d, dy / d, sp, dt);
     }
   }
@@ -402,6 +426,7 @@ export class GameRoom {
     }));
     const mobs = this.mobs.map((m) => ({
       id: m.id, kind: m.kind, x: Math.round(m.x), y: Math.round(m.y), dir: m.dir, hp: Math.round(m.hp), maxhp: m.maxhp,
+      ag: m.aggroT > 0 ? 1 : 0, // 1 = provoked (will attack); 0 = passive
     }));
     this.broadcast({
       t: "snapshot", now: Date.now(),
