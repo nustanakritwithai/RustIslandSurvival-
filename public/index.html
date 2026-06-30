@@ -404,17 +404,17 @@ const W = 6400, H = 4400;
 const ZONES = [
   {nm:"ฐาน",        x:2850,y:1920, w:700, h:560, col:"#7a6f5f", risk:0, label:"ปลอดภัย"},
   // beach ring
-  {nm:"ชายหาด",     x:0,   y:0,    w:W,   h:360, col:"#d9c39a", risk:0},
-  {nm:"ชายหาด",     x:0,   y:H-360,w:W,   h:360, col:"#d9c39a", risk:0},
-  {nm:"ชายหาด",     x:0,   y:360,  w:320, h:H-720, col:"#d9c39a", risk:0},
-  {nm:"ชายหาด",     x:W-320,y:360, w:320, h:H-720, col:"#d9c39a", risk:0},
+  {nm:"ชายหาด",     x:0,   y:0,    w:W,   h:360, col:"#e4cd9c", risk:0},
+  {nm:"ชายหาด",     x:0,   y:H-360,w:W,   h:360, col:"#e4cd9c", risk:0},
+  {nm:"ชายหาด",     x:0,   y:360,  w:320, h:H-720, col:"#e4cd9c", risk:0},
+  {nm:"ชายหาด",     x:W-320,y:360, w:320, h:H-720, col:"#e4cd9c", risk:0},
   // forest fills the interior (largest -> lowest priority on overlap)
-  {nm:"ป่า",        x:320, y:360,  w:W-640, h:H-720, col:"#3f6d3a", risk:1},
+  {nm:"ป่า",        x:320, y:360,  w:W-640, h:H-720, col:"#46823c", risk:1},
   // mines (risk 2)
   {nm:"เหมือง",     x:640, y:1560, w:1500, h:1280, col:"#5a514a", risk:2},
   {nm:"เหมือง",     x:W-2140,y:1560,w:1500, h:1280, col:"#5a514a", risk:2},
   // NEW biome: หนองน้ำ (swamp, risk 2 — poison country)
-  {nm:"หนองน้ำ",    x:2380,y:560,  w:1640, h:1080, col:"#37514a", risk:2},
+  {nm:"หนองน้ำ",    x:2380,y:560,  w:1640, h:1080, col:"#3d6a57", risk:2},
   // NEW biome: ดินแดนเถ้าถ่าน (volcanic ashlands, risk 3 — deepest/most dangerous)
   {nm:"เถ้าถ่าน",   x:2380,y:H-1640,w:1640,h:1080, col:"#4a3836", risk:3},
 ];
@@ -695,6 +695,29 @@ function buildWorld(){
     {x:3200,  y:1080,     r:62, dur:5, type:"center", draw:0.9,  nm:"จุดสกัดหนองน้ำ", desc:"กลางหนองน้ำ · ศัตรูพิษ", prog:0},
     {x:3200,  y:H-1080,   r:62, dur:8, type:"center", draw:1.1,  nm:"จุดสกัดเถ้าถ่าน", desc:"ลึกสุด · อันตรายสุด · ของดี", prog:0},
   ];
+  generateDeco();
+}
+// ---- Thai tropical scenery (decorative only; no collision) ----
+function generateDeco(){
+  G.deco=[];
+  const add=(type,x,y,extra)=>G.deco.push(Object.assign({type,x,y,s:0.8+rand(0,0.5)},extra||{}));
+  const scatterDeco=(type,n,pred)=>{let tries=0;while(n>0&&tries<n*40){tries++;
+    const x=rand(60,W-60),y=rand(60,H-60),z=zoneAt(x,y);
+    if(!pred(z))continue; if(dist2(x,y,SPAWN.x,SPAWN.y)<150*150)continue;
+    add(type,x,y); n--;}};
+  scatterDeco("palm", 70, z=>z.nm==="ชายหาด");
+  scatterDeco("shell",40, z=>z.nm==="ชายหาด");
+  scatterDeco("fern",150, z=>z.nm==="ป่า");
+  scatterDeco("grass",240,z=>z.risk<=1&&z.nm!=="ฐาน");
+  scatterDeco("lotus",55, z=>z.nm==="หนองน้ำ");
+  scatterDeco("stump",45, z=>z.nm==="เถ้าถ่าน");
+  // Thai touches at the base: spirit house + sala pavilion + lanterns
+  add("shrine",SPAWN.x-260,SPAWN.y-150,{s:1});
+  add("sala",  SPAWN.x+250,SPAWN.y-120,{s:1});
+  add("lantern",SPAWN.x-150,SPAWN.y+150,{s:1});
+  add("lantern",SPAWN.x+150,SPAWN.y+150,{s:1});
+  // a few floating krathong on swamp water for flavor
+  scatterDeco("krathong",14,z=>z.nm==="หนองน้ำ");
 }
 // Rebuild the island from a shared server seed so all online players see the
 // same node/horse/extract layout. Buildings, core, and inventory are untouched.
@@ -2054,8 +2077,12 @@ function draw(){
   cam.x=clamp(p.x-VW/2,0,W-VW); if(W<VW)cam.x=(W-VW)/2;
   cam.y=clamp(p.y-VH/2,0,H-VH); if(H<VH)cam.y=(H-VH)/2;
   ctx.clearRect(0,0,VW,VH);
-  // sea
-  ctx.fillStyle="#1f4750";ctx.fillRect(0,0,VW,VH);
+  // tropical sea — soft vertical gradient + drifting shimmer
+  const sea=ctx.createLinearGradient(0,0,0,VH);
+  sea.addColorStop(0,"#15414a");sea.addColorStop(1,"#1d5c63");
+  ctx.fillStyle=sea;ctx.fillRect(0,0,VW,VH);
+  ctx.fillStyle="rgba(255,255,255,.04)";
+  for(let i=0;i<5;i++){const yy=((now()/40+i*120)%(VH+80))-40;ctx.fillRect(0,yy,VW,2);}
   // zones (draw island land)
   for(const z of ZONES){
     if(z.nm==="ฐาน")continue;
@@ -2063,6 +2090,8 @@ function draw(){
   }
   // base zone overlay
   rzone(ZONES[0]);
+  // Thai tropical scenery (palms, lotus, ferns, shrine) — purely decorative
+  drawDeco();
   // territory ring
   if(G.core){const sx=G.core.x-cam.x,sy=G.core.y-cam.y;
     ctx.strokeStyle="rgba(224,150,46,.35)";ctx.setLineDash([8,7]);ctx.lineWidth=2;
@@ -2151,6 +2180,78 @@ function rzone(z){
   ctx.fillStyle=z.col;ctx.fillRect(sx,sy,z.w,z.h);
   if(z.nm==="ฐาน"){ctx.strokeStyle="rgba(224,150,46,.5)";ctx.lineWidth=2;ctx.strokeRect(sx,sy,z.w,z.h);}
 }
+/* ---------- Thai tropical decorative scenery (no collision) ---------- */
+function drawDeco(){
+  if(!G.deco)return;
+  for(const d of G.deco){
+    const sx=d.x-cam.x,sy=d.y-cam.y;
+    if(sx<-70||sy<-90||sx>VW+70||sy>VH+70)continue;
+    const f=DECO[d.type]; if(f)f(sx,sy,d.s||1);
+  }
+}
+const DECO={
+  grass(x,y){ctx.strokeStyle="rgba(58,108,48,.65)";ctx.lineWidth=1.4;ctx.lineCap="round";
+    ctx.beginPath();ctx.moveTo(x-3,y+1);ctx.lineTo(x-4,y-6);ctx.moveTo(x,y+1);ctx.lineTo(x,y-8);ctx.moveTo(x+3,y+1);ctx.lineTo(x+5,y-6);ctx.stroke();ctx.lineCap="butt";},
+  shell(x,y,s){ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+    ctx.fillStyle="#efe2c8";ctx.beginPath();ctx.arc(0,0,4,Math.PI,0);ctx.closePath();ctx.fill();
+    ctx.strokeStyle="#c9b48c";ctx.lineWidth=0.8;for(let i=-2;i<=2;i++){ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(i*1.8,-4);ctx.stroke();}ctx.restore();},
+  fern(x,y,s){ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+    ctx.fillStyle="rgba(0,0,0,.12)";ctx.beginPath();ctx.ellipse(0,2,8,3,0,0,7);ctx.fill();
+    ctx.strokeStyle="#356b30";ctx.lineWidth=2;ctx.lineCap="round";
+    for(let i=-2;i<=2;i++){ctx.beginPath();ctx.moveTo(0,2);ctx.quadraticCurveTo(i*4,-8,i*7,-16);ctx.stroke();}
+    ctx.fillStyle="#418a3a";ctx.beginPath();ctx.ellipse(0,-4,5,8,0,0,7);ctx.fill();ctx.restore();ctx.lineCap="butt";},
+  palm(x,y,s){ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+    ctx.fillStyle="rgba(0,0,0,.16)";ctx.beginPath();ctx.ellipse(0,2,14,5,0,0,7);ctx.fill();
+    ctx.strokeStyle="#8a6a40";ctx.lineWidth=5;ctx.lineCap="round";
+    ctx.beginPath();ctx.moveTo(0,2);ctx.quadraticCurveTo(4,-22,11,-40);ctx.stroke();
+    const hx=11,hy=-42;
+    ctx.fillStyle="#5b4326";ctx.beginPath();ctx.arc(hx-3,hy+4,3,0,7);ctx.arc(hx+3,hy+5,3,0,7);ctx.fill();
+    ctx.strokeStyle="#2f7d3a";ctx.lineWidth=3;
+    const tips=[[-22,-9],[-14,-20],[-3,-24],[7,-22],[17,-13],[21,-1]];
+    for(const t of tips){ctx.beginPath();ctx.moveTo(hx,hy);ctx.quadraticCurveTo(hx+t[0]*0.5,hy+t[1]*0.5-4,hx+t[0],hy+t[1]);ctx.stroke();}
+    ctx.fillStyle="#3a8a45";ctx.beginPath();ctx.arc(hx,hy-2,4,0,7);ctx.fill();ctx.restore();ctx.lineCap="butt";},
+  lotus(x,y,s){ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+    ctx.fillStyle="#2f6b4a";ctx.beginPath();ctx.ellipse(0,0,11,8,0,0,7);ctx.fill();
+    ctx.fillStyle="rgba(0,0,0,.12)";ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,8,-0.3,0.7);ctx.closePath();ctx.fill();
+    ctx.fillStyle="#e58fb0";for(let i=0;i<6;i++){const a=i/6*Math.PI*2;ctx.beginPath();ctx.ellipse(Math.cos(a)*3-2,Math.sin(a)*3-4,2.3,4,a,0,7);ctx.fill();}
+    ctx.fillStyle="#f6d36b";ctx.beginPath();ctx.arc(-2,-4,2,0,7);ctx.fill();ctx.restore();},
+  krathong(x,y,s){ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+    ctx.fillStyle="#3a7d4a";ctx.beginPath();ctx.ellipse(0,0,8,5,0,0,7);ctx.fill();
+    ctx.fillStyle="#e58fb0";ctx.beginPath();ctx.arc(0,-1,3,0,7);ctx.fill();
+    const fl=0.6+0.4*Math.sin(now()/200+x);ctx.fillStyle="rgba(255,200,90,"+fl+")";ctx.beginPath();ctx.arc(0,-4,2.2,0,7);ctx.fill();ctx.restore();},
+  stump(x,y,s){ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+    ctx.fillStyle="rgba(0,0,0,.2)";ctx.beginPath();ctx.ellipse(0,3,9,3,0,0,7);ctx.fill();
+    ctx.fillStyle="#2a2320";ctx.beginPath();ctx.moveTo(-6,4);ctx.lineTo(-5,-8);ctx.lineTo(5,-8);ctx.lineTo(6,4);ctx.closePath();ctx.fill();
+    const g=0.5+0.5*Math.sin(now()/300+x);ctx.fillStyle="rgba(224,90,30,"+(0.35+g*0.4)+")";ctx.beginPath();ctx.arc(0,-8,3,0,7);ctx.fill();ctx.restore();},
+  lantern(x,y){ctx.save();ctx.translate(x,y);
+    ctx.fillStyle="rgba(0,0,0,.15)";ctx.beginPath();ctx.ellipse(0,2,5,2,0,0,7);ctx.fill();
+    ctx.strokeStyle="#5b3f22";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,2);ctx.lineTo(0,-14);ctx.stroke();
+    const g=0.6+0.4*Math.sin(now()/350+x);ctx.fillStyle="rgba(255,170,60,"+(0.22+g*0.25)+")";ctx.beginPath();ctx.arc(0,-18,9,0,7);ctx.fill();
+    ctx.fillStyle="#c4452f";ctx.beginPath();ctx.ellipse(0,-18,5,7,0,0,7);ctx.fill();
+    ctx.fillStyle="#f0c95a";ctx.fillRect(-5,-19,10,2);ctx.restore();},
+  shrine(x,y){ctx.save();ctx.translate(x,y);
+    ctx.fillStyle="rgba(0,0,0,.18)";ctx.beginPath();ctx.ellipse(0,2,12,4,0,0,7);ctx.fill();
+    ctx.fillStyle="#7a5a32";ctx.fillRect(-3,-18,6,20);
+    ctx.fillStyle="#b22f2a";ctx.fillRect(-11,-34,22,18);
+    ctx.fillStyle="#d4a23a";ctx.fillRect(-11,-22,22,3);
+    ctx.fillStyle="#2a1f16";ctx.fillRect(-3,-30,6,10);
+    ctx.fillStyle="#8e241f";ctx.beginPath();ctx.moveTo(-14,-34);ctx.lineTo(0,-46);ctx.lineTo(14,-34);ctx.closePath();ctx.fill();
+    ctx.fillStyle="#d4a23a";ctx.beginPath();ctx.moveTo(-9,-44);ctx.lineTo(0,-52);ctx.lineTo(9,-44);ctx.closePath();ctx.fill();
+    ctx.strokeStyle="#f0c95a";ctx.lineWidth=2;ctx.lineCap="round";
+    ctx.beginPath();ctx.moveTo(-14,-34);ctx.quadraticCurveTo(-18,-40,-16,-45);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(14,-34);ctx.quadraticCurveTo(18,-40,16,-45);ctx.stroke();
+    const g=0.5+0.5*Math.sin(now()/400);ctx.fillStyle="rgba(255,200,90,"+(0.3+g*0.3)+")";ctx.beginPath();ctx.arc(0,-2,4,0,7);ctx.fill();ctx.restore();ctx.lineCap="butt";},
+  sala(x,y){ctx.save();ctx.translate(x,y);
+    ctx.fillStyle="rgba(0,0,0,.18)";ctx.beginPath();ctx.ellipse(0,4,26,7,0,0,7);ctx.fill();
+    ctx.fillStyle="#8a6a3a";ctx.fillRect(-22,-6,44,10);ctx.fillStyle="#6b4f2a";ctx.fillRect(-22,2,44,3);
+    ctx.fillStyle="#5b3f22";ctx.fillRect(-19,-26,4,22);ctx.fillRect(15,-26,4,22);ctx.fillRect(-3,-26,4,22);
+    ctx.fillStyle="#b22f2a";ctx.beginPath();ctx.moveTo(-26,-26);ctx.lineTo(0,-40);ctx.lineTo(26,-26);ctx.closePath();ctx.fill();
+    ctx.fillStyle="#8e241f";ctx.beginPath();ctx.moveTo(-20,-34);ctx.lineTo(0,-46);ctx.lineTo(20,-34);ctx.closePath();ctx.fill();
+    ctx.strokeStyle="#f0c95a";ctx.lineWidth=2.4;ctx.lineCap="round";
+    ctx.beginPath();ctx.moveTo(0,-46);ctx.lineTo(0,-53);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-26,-26);ctx.quadraticCurveTo(-32,-34,-29,-41);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(26,-26);ctx.quadraticCurveTo(32,-34,29,-41);ctx.stroke();ctx.restore();ctx.lineCap="butt";},
+};
 function rnode(n,x,y){
   const t=NODE_TYPES[n.type];
   if(n.type==="tree"){ctx.fillStyle=t.trunk;ctx.fillRect(x-3,y,6,14);ctx.fillStyle=t.color;ctx.beginPath();ctx.arc(x,y-4,n.r,0,7);ctx.fill();ctx.fillStyle="rgba(255,255,255,.08)";ctx.beginPath();ctx.arc(x-4,y-8,n.r*0.5,0,7);ctx.fill();}
