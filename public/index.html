@@ -1079,6 +1079,9 @@ function resetLoadout(){
   G.buildings=G.buildings.filter(b=>b.net); // keep shared forts; clear only your own structures
   G.core=null;
   G.buildMode=null;G.editMode=null;
+  G.loot.length=0;        // clear corpses/dropped bags so last round's items can't be looted
+  G.projectiles.length=0;
+  G.fx.length=0;
 }
 function deploy(){
   hide("cover");
