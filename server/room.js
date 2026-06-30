@@ -21,6 +21,7 @@ export class GameRoom {
   constructor() {
     this.players = new Map(); // id -> {ws,name,x,y,dir,hp,carrying,last}
     this.bots = [];
+    this.deadNodes = new Map(); // node index -> respawn-at ms (shared resource depletion)
     this.beacon = newBeacon();
     this.board = new Leaderboard();
     this.slot = slotInfo();
@@ -41,6 +42,7 @@ export class GameRoom {
       id: ws.id,
       slot: slotInfo(),
       board: this.board.list(),
+      nodes: [...this.deadNodes.keys()], // currently depleted nodes (for mid-round joiners)
     }));
   }
 
@@ -86,6 +88,14 @@ export class GameRoom {
       // only let non-owners chip a planted beacon (you can't break your own)
       if (this.beacon.owner !== ws.id && damageBeacon(this.beacon, m.amt)) {
         this.broadcast({ t: "event", kind: "landed", data: { x: this.beacon.x, y: this.beacon.y } });
+      }
+    } else if (m.t === "node") {
+      // a player harvested node #i; deplete it for everyone until it respawns
+      const i = m.i | 0;
+      const rt = clamp(+m.rt || 30, 1, 600);
+      if (i >= 0 && i < 20000 && !this.deadNodes.has(i)) {
+        this.deadNodes.set(i, Date.now() + rt * 1000);
+        this.broadcast({ t: "event", kind: "node", data: { i, dead: true } });
       }
     } else if (m.t === "ping") {
       ws.send(encode({ t: "pong" }));
@@ -234,10 +244,19 @@ export class GameRoom {
     if (s.id !== this.slot.id) {
       this.resolveEnd();
       this.beacon = newBeacon();
+      this.deadNodes.clear(); // fresh island next round
       this.slot = s;
       this.spawnBots();
       this.refreshBots();
       this.broadcast({ t: "event", kind: "reset", data: { slot: { id: s.id, remain: s.remain, seed: s.seed } } });
+    }
+
+    // respawn depleted nodes for everyone when their timer elapses
+    for (const [i, at] of this.deadNodes) {
+      if (nowMs >= at) {
+        this.deadNodes.delete(i);
+        this.broadcast({ t: "event", kind: "node", data: { i, dead: false } });
+      }
     }
 
     const ev = advanceAirdrop(this.beacon, s.remain);

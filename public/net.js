@@ -104,6 +104,7 @@
     if (m.t === "welcome") {
       NET.id = m.id;
       if (m.slot) applyWorldSeed(m.slot.seed);
+      if (m.nodes) applyDeadNodes(m.nodes); // depleted nodes already harvested this round
       if (m.board) { NET.board = m.board; refreshBoardUI(); }
     } else if (m.t === "snapshot") {
       applySnapshot(m);
@@ -156,6 +157,8 @@
       if (typeof toast === "function") toast("📦 Airdrop ตกแล้ว! ไปเก็บ 📡 ก่อนคนอื่น");
     } else if (m.kind === "win") {
       onServerWin(d);
+    } else if (m.kind === "node") {
+      setNodeDead(d.i, d.dead);
     } else if (m.kind === "reset") {
       NET.serverBeacon = { state: "none" };
       if (typeof G !== "undefined") {
@@ -192,6 +195,18 @@
       recordRun(winnerName ? "botwin" : "timeout",
         { lost: bag, lostVal: lostVal, winner: winnerName || "" });
     }
+  }
+
+  // Apply shared node depletion from the server.
+  function setNodeDead(i, dead) {
+    if (typeof G === "undefined" || !G.nodes || i == null) return;
+    var n = G.nodes[i];
+    if (!n) return;
+    if (dead) { n.dead = true; }
+    else { n.dead = false; n.hp = n.maxhp; }
+  }
+  function applyDeadNodes(list) {
+    for (var i = 0; i < list.length; i++) setNodeDead(list[i], true);
   }
 
   // Regenerate the local island when the server's shared seed changes.

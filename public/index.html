@@ -704,6 +704,7 @@ function regenWorld(seed){
   try{buildWorld();}finally{RNG=prev;}
   // keep the home extract on the player's base (deploy() also does this)
   if(G.extracts[0]){G.extracts[0].x=G.core?G.core.x:SPAWN.x;G.extracts[0].y=G.core?G.core.y:SPAWN.y;}
+  for(let i=0;i<G.nodes.length;i++)G.nodes[i].idx=i; // stable shared id for authoritative depletion
   G.worldSeed=seed;
 }
 
@@ -1101,7 +1102,9 @@ function gather(node){
     give(t.yield); if(t.extra)give(t.extra);
     G.stats.harvests++;
     if(got.length)toast(got.join(", ")); else toast("กระเป๋าเต็ม!");
-    if(t.infinite){node.hp=node.maxhp;}else{node.dead=true;node.rt=t.respawn;}
+    if(t.infinite){node.hp=node.maxhp;}else{node.dead=true;node.rt=t.respawn;
+      if(window.NET&&NET.connected)netSend({t:"node",i:(node.idx!=null?node.idx:G.nodes.indexOf(node)),rt:t.respawn}); // deplete for everyone
+    }
   }
 }
 function attack(){
@@ -1942,8 +1945,9 @@ function update(dt){
     if(ex&&ex.arming){ex.prog=(ex.prog||0)+dt/(ex.dur*CFG.chargeMult);if(ex.prog>=1){ex.prog=0;extract();return;}}
     else if(!ex){/* outside any zone */}
   }
-  // nodes respawn
-  for(const n of G.nodes){if(n.dead){n.rt-=dt;if(n.rt<=0){n.dead=false;n.hp=n.maxhp;}}}
+  // nodes respawn (server-driven when online, so depletion stays shared)
+  if(!(window.NET&&NET.connected))
+    for(const n of G.nodes){if(n.dead){n.rt-=dt;if(n.rt<=0){n.dead=false;n.hp=n.maxhp;}}}
   // loot decay
   for(let i=G.loot.length-1;i>=0;i--){G.loot[i].t-=dt;if(G.loot[i].t<=0||!G.loot[i].items.length)G.loot.splice(i,1);}
   autoDoors();
