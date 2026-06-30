@@ -253,6 +253,7 @@
 
 <div id="cover"><div class="box" id="cover-box"></div></div>
 
+<script src="net.js"></script>
 <script>
 "use strict";
 /* ============================================================
@@ -925,6 +926,10 @@ function airdropTimeline(){
   }
 }
 function damageBeacon(amt){
+  if(window.NET&&NET.connected){ // server is authoritative; only contesting (non-owner) damage is reported
+    if(G.beacon.state==="planted"&&G.beacon.owner!==NET.id)netSend({t:"beaconDmg",amt});
+    return;
+  }
   const b=G.beacon;if(b.state!=="planted")return;
   b.hp-=amt;
   if(b.hp<=0){b.state="crate";b.hp=0;b.owner=null;toast("💥 ตัวส่งสัญญาณถูกทำลาย! ไปยึดกลับมาปักใหม่");}
@@ -938,6 +943,12 @@ function aggroPoint(){ // monsters converge on the beacon's holder/site, else th
 }
 function beaconAction(){
   const b=G.beacon,p=G.player;
+  if(window.NET&&NET.connected){ // ask the server; it decides who wins the race
+    if(b.state==="crate")netSend({t:"beacon",action:"grab",x:p.x,y:p.y});
+    else if(b.state==="carried"&&b.owner===NET.id)netSend({t:"beacon",action:"plant",x:p.x,y:p.y});
+    else if(b.state==="planted"&&b.owner===NET.id)netSend({t:"beacon",action:"lift",x:p.x,y:p.y});
+    return;
+  }
   if(b.state==="crate"){ if(dist2(b.x,b.y,p.x,p.y)<70*70){b.state="carried";b.owner="player";toast("ถือ 📡 — ช้าลง+มอนสเตอร์รุม! ไปปักในป้อม");} return; }
   if(b.state==="carried"&&b.owner==="player"){
     if(blockedAt(p.x,p.y)){toast("ตรงนี้ปักไม่ได้");return;}
@@ -1010,8 +1021,8 @@ function nearestEnemyMelee(){ // nearest wolf or bot within melee reach
   return best;
 }
 /* ---------- shared winner leaderboard ---------- */
-async function loadBoard(){const raw=await store.get("lsi:winners",true);if(!raw)return[];try{return JSON.parse(raw)||[];}catch(e){return[];}}
-async function pushWinner(name,val){let b=await loadBoard();b.unshift({name,val,ts:Date.now()});b=b.slice(0,12);await store.set("lsi:winners",JSON.stringify(b),true);}
+async function loadBoard(){if(window.NET&&NET.connected&&NET.board)return NET.board; const raw=await store.get("lsi:winners",true);if(!raw)return[];try{return JSON.parse(raw)||[];}catch(e){return[];}}
+async function pushWinner(name,val){if(window.NET&&NET.connected)return; /* server owns the shared board */ let b=await loadBoard();b.unshift({name,val,ts:Date.now()});b=b.slice(0,12);await store.set("lsi:winners",JSON.stringify(b),true);}
 function deploy(){
   hide("cover");
   G.dead=false;G.paused=false;G.mapOpen=false;
@@ -1032,7 +1043,8 @@ function deploy(){
   for(const e of G.extracts)e.prog=0;
   G.wolves.length=0; G.projectiles.length=0; G.mounted=null; G.beacon={state:"none"}; G._airWarn=false;
   G.buildings=G.buildings.filter(b=>!b.bot); // never keep AI-built forts
-  spawnBots(3);
+  spawnBots(3); // local fallback bots; replaced by server players/bots once connected
+  if(typeof netOnDeploy==="function")netOnDeploy();
   audioInit();audioResume();musicStart();
 }
 
@@ -1855,6 +1867,7 @@ function update(dt){
     return;
   }
   const p=G.player;
+  if(window.NET&&NET.connected)netTickInterp(dt); // smooth remote players/bots
   // movement
   const kv=readKeys();
   let ix=input.x,iy=input.y;
@@ -1891,9 +1904,14 @@ function update(dt){
   G.time+=dt/240; if(G.time>=1){G.time-=1;G.day++;}
   // round timer + extraction channel
   if(G.round.active){
+    const net=window.NET&&NET.connected;
+    if(net)netApplyBeacon(); // server owns airdrop/beacon
     const s=slotInfo();
-    if(s.id!==G.round.slot){resolveEnd();return;} // server slot rolled over -> round ends for everyone
-    G.round.time=s.remain;
+    if(s.id!==G.round.slot){ // round rolled over to a new 10-min slot
+      if(net){G.round.slot=s.id;} // server sends win+reset events; keep playing
+      else{resolveEnd();return;}
+    }
+    G.round.time=net&&NET.serverRound?NET.serverRound.remain:s.remain; // server clock avoids drift
     // threat-escalation phase announcements
     const tt=G.round.time;
     const ph = tt>240?0 : tt>120?1 : tt>60?2 : 3;
@@ -1903,8 +1921,8 @@ function update(dt){
       else if(ph===3)toast("⏰ ใกล้เกาะระเบิด! ยึดตัวส่งสัญญาณให้ได้");
       G._phase=ph;
     }
-    airdropTimeline();
-    if(G.round.time<=0){G.round.time=0;resolveEnd();return;}
+    if(!net)airdropTimeline(); // when connected the server drives the airdrop
+    if(G.round.time<=0){G.round.time=0;if(!net){resolveEnd();return;}}
     const ex=nearestExtract();
     for(const e of G.extracts)if(e!==ex){e.prog=0;e.arming=false;}
     if(ex&&ex.arming){ex.prog=(ex.prog||0)+dt/(ex.dur*CFG.chargeMult);if(ex.prog>=1){ex.prog=0;extract();return;}}
@@ -1916,7 +1934,7 @@ function update(dt){
   for(let i=G.loot.length-1;i>=0;i--){G.loot[i].t-=dt;if(G.loot[i].t<=0||!G.loot[i].items.length)G.loot.splice(i,1);}
   autoDoors();
   wolfTick(dt);
-  botTick(dt);
+  if(window.NET&&NET.connected){G.bots.length=0;}else{botTick(dt);} // server replaces local bots
   horseTick(dt);
   turretTick(dt);
   projTick(dt);
@@ -1985,8 +2003,10 @@ function draw(){
   for(const h of G.horses){const sx=h.x-cam.x,sy=h.y-cam.y;if(sx<-50||sy<-50||sx>VW+50||sy>VH+50)continue;rhorse(sx,sy,h.dir);}
   // wolves
   for(const w of G.wolves){const sx=w.x-cam.x,sy=w.y-cam.y;if(sx<-40||sy<-40||sx>VW+40||sy>VH+40)continue;rwolf(w,sx,sy);}
-  // bots (other survivors)
+  // bots (other survivors) — local fallback when offline
   for(const b of G.bots){const sx=b.x-cam.x,sy=b.y-cam.y;if(sx<-50||sy<-50||sx>VW+50||sy>VH+50)continue;rbot(b,sx,sy);}
+  // remote players + server bots (online)
+  if(window.NET&&NET.connected)netDrawRemotes();
   // projectiles (arrows / bullets / bombs)
   for(const pr of G.projectiles){const sx=pr.x-cam.x,sy=pr.y-cam.y;const a=Math.atan2(pr.vy,pr.vx);
     if(pr.enemy){ctx.fillStyle="#8fd14a";ctx.beginPath();ctx.arc(sx,sy,4,0,7);ctx.fill();
