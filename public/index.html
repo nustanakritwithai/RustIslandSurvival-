@@ -718,6 +718,42 @@ function generateDeco(){
   add("lantern",SPAWN.x+150,SPAWN.y+150,{s:1});
   // a few floating krathong on swamp water for flavor
   scatterDeco("krathong",14,z=>z.nm==="หนองน้ำ");
+  buildLandMap();
+}
+/* Pre-render biomes onto a downscaled offscreen canvas with organic (wobbly)
+   edges, then blit it each frame — so zone borders look natural instead of hard
+   rectangles, and the island gets a wavy coastline. Logic zones are untouched. */
+function buildLandMap(){
+  const SC=0.3, LW=Math.round(W*SC), LH=Math.round(H*SC);
+  const lc=(typeof document!=="undefined")?document.createElement("canvas"):null;
+  if(!lc)return;
+  lc.width=LW;lc.height=LH;const g=lc.getContext("2d");
+  const sea=g.createLinearGradient(0,0,0,LH);sea.addColorStop(0,"#15414a");sea.addColorStop(1,"#1d5c63");
+  g.fillStyle=sea;g.fillRect(0,0,LW,LH);
+  const seed=(G.worldSeed||1);
+  const hash=(s)=>{let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h;};
+  const drawZone=(z,amp)=>{if(!z.col)return;g.fillStyle=z.col;
+    wobblyPath(g,z.x*SC,z.y*SC,z.w*SC,z.h*SC,amp*SC,(seed+hash(z.nm+z.x))%100000);g.fill();};
+  for(let i=0;i<ZONES.length;i++){const z=ZONES[i];if(z.nm==="ฐาน")continue;drawZone(z,z.risk===0?70:62);}
+  drawZone(ZONES[0],26); // base
+  G._land=lc;G._landSC=SC;
+}
+function wobblyPath(g,x,y,w,h,amp,seed){
+  const per=2*(w+h),seg=Math.max(28,Math.round(per/14)),pts=[];
+  const noise=(t)=>Math.sin(t*0.6+seed*0.013)*0.6+Math.sin(t*1.7+seed*0.071)*0.4;
+  for(let i=0;i<seg;i++){
+    const t=i/seg*per;let px,py,nx,ny;
+    if(t<w){px=x+t;py=y;nx=0;ny=-1;}
+    else if(t<w+h){const u=t-w;px=x+w;py=y+u;nx=1;ny=0;}
+    else if(t<2*w+h){const u=t-(w+h);px=x+w-u;py=y+h;nx=0;ny=1;}
+    else{const u=t-(2*w+h);px=x;py=y+h-u;nx=-1;ny=0;}
+    const off=noise(t/26)*amp;
+    pts.push([px+nx*off,py+ny*off]);
+  }
+  g.beginPath();const n=pts.length;
+  g.moveTo((pts[0][0]+pts[n-1][0])/2,(pts[0][1]+pts[n-1][1])/2);
+  for(let i=0;i<n;i++){const a=pts[i],b=pts[(i+1)%n];g.quadraticCurveTo(a[0],a[1],(a[0]+b[0])/2,(a[1]+b[1])/2);}
+  g.closePath();
 }
 // Rebuild the island from a shared server seed so all online players see the
 // same node/horse/extract layout. Buildings, core, and inventory are untouched.
@@ -2077,19 +2113,16 @@ function draw(){
   cam.x=clamp(p.x-VW/2,0,W-VW); if(W<VW)cam.x=(W-VW)/2;
   cam.y=clamp(p.y-VH/2,0,H-VH); if(H<VH)cam.y=(H-VH)/2;
   ctx.clearRect(0,0,VW,VH);
-  // tropical sea — soft vertical gradient + drifting shimmer
-  const sea=ctx.createLinearGradient(0,0,0,VH);
-  sea.addColorStop(0,"#15414a");sea.addColorStop(1,"#1d5c63");
-  ctx.fillStyle=sea;ctx.fillRect(0,0,VW,VH);
-  ctx.fillStyle="rgba(255,255,255,.04)";
-  for(let i=0;i<5;i++){const yy=((now()/40+i*120)%(VH+80))-40;ctx.fillRect(0,yy,VW,2);}
-  // zones (draw island land)
-  for(const z of ZONES){
-    if(z.nm==="ฐาน")continue;
-    rzone(z);
+  // biomes with natural (organic) borders — pre-rendered land map, blitted smooth
+  if(G._land){
+    const SC=G._landSC;ctx.imageSmoothingEnabled=true;
+    ctx.drawImage(G._land, cam.x*SC, cam.y*SC, VW*SC, VH*SC, 0,0, VW, VH);
+    ctx.fillStyle="rgba(255,255,255,.035)"; // gentle sea shimmer at the edges
+    for(let i=0;i<4;i++){const yy=((now()/45+i*150)%(VH+80))-40;ctx.fillRect(0,yy,VW,2);}
+  }else{ // fallback: flat zones
+    ctx.fillStyle="#1d5c63";ctx.fillRect(0,0,VW,VH);
+    for(const z of ZONES){if(z.nm!=="ฐาน")rzone(z);} rzone(ZONES[0]);
   }
-  // base zone overlay
-  rzone(ZONES[0]);
   // Thai tropical scenery (palms, lotus, ferns, shrine) — purely decorative
   drawDeco();
   // territory ring
