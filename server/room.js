@@ -19,11 +19,11 @@ const ri = (a, b) => Math.floor(rand(a, b + 1));
 // Minimal monster stats (positions/HP/AI are authoritative here; the client
 // renders kind-specific visuals). Server AI is simplified to chase + siege.
 const MOBS = {
-  wolf: { hp: 30, sp: 86, dmg: 7, r: 13 },
-  boar: { hp: 75, sp: 58, dmg: 17, r: 16 },
-  bat: { hp: 14, sp: 122, dmg: 4, r: 9 },
-  scorpion: { hp: 60, sp: 96, dmg: 13, r: 14 },
-  bear: { hp: 150, sp: 64, dmg: 25, r: 19 },
+  wolf: { hp: 18, sp: 96, dmg: 7, r: 13 },
+  boar: { hp: 40, sp: 70, dmg: 15, r: 16 },
+  bat: { hp: 9, sp: 130, dmg: 4, r: 9 },
+  scorpion: { hp: 32, sp: 104, dmg: 12, r: 14 },
+  bear: { hp: 85, sp: 74, dmg: 22, r: 19 },
 };
 function pickKind() {
   const r = Math.random();
@@ -314,17 +314,18 @@ export class GameRoom {
 
   mobTick(dt, s) {
     const finale = this.beacon.state === "planted" || this.beacon.state === "carried";
-    const esc = s.remain > 240 ? 0.2 : s.remain > 120 ? 0.55 : s.remain > 60 ? 0.8 : 1;
-    const cap = Math.round(4 + esc * 8) + (finale ? 7 : 0) + Math.min(8, this.players.size * 2);
+    const esc = s.remain > 240 ? 0.3 : s.remain > 120 ? 0.6 : s.remain > 60 ? 0.85 : 1;
+    // more monsters overall, and a real horde during the finale
+    const cap = Math.round(8 + esc * 14) + (finale ? 12 : 0) + Math.min(12, this.players.size * 3);
     const anyone = this.players.size + this.bots.length > 0;
 
-    // spawn over time, away from anyone, in open ground
-    if (anyone && this.mobs.length < cap && Math.random() < dt * (0.4 + esc * 1.2 + (finale ? 0.6 : 0))) {
-      for (let k = 0; k < 10; k++) {
+    // spawn quickly, just off-screen from players, in open ground
+    if (anyone && this.mobs.length < cap && Math.random() < dt * (1.0 + esc * 2.2 + (finale ? 1.2 : 0))) {
+      for (let k = 0; k < 12; k++) {
         const x = rand(120, WORLD.W - 120), y = rand(120, WORLD.H - 120);
         if (this.mobBlocked(x, y)) continue;
         let near = false;
-        for (const p of this.players.values()) { if (dist2(x, y, p.x, p.y) < (finale ? 360 : 520) ** 2) { near = true; break; } }
+        for (const p of this.players.values()) { if (dist2(x, y, p.x, p.y) < 420 ** 2) { near = true; break; } }
         if (near) continue;
         const kind = pickKind();
         this.mobs.push({ id: this._mid++, kind, x, y, dir: 1, hp: MOBS[kind].hp, maxhp: MOBS[kind].hp, t: rand(1, 3), tx: x, ty: y });
@@ -335,19 +336,19 @@ export class GameRoom {
     const lure = this.beaconLure();
     for (const mob of this.mobs) {
       const st = MOBS[mob.kind] || MOBS.wolf;
-      let tx, ty, isSiege = false;
-      if (lure) { tx = lure.x; ty = lure.y; isSiege = !!lure.siege; }
+      let tx, ty, isSiege = false, chasing = false;
+      if (lure) { tx = lure.x; ty = lure.y; isSiege = !!lure.siege; chasing = true; }
       else {
-        const t = this.nearestTarget(mob);
-        if (t && dist2(mob.x, mob.y, t.x, t.y) < 520 * 520) { tx = t.x; ty = t.y; }
-        else { // wander
+        const t = this.nearestTarget(mob); // always head toward the nearest survivor so they actually close in
+        if (t) { tx = t.x; ty = t.y; chasing = true; }
+        else { // truly nobody: drift
           mob.t -= dt;
           if (mob.t <= 0) { mob.t = rand(2, 5); mob.tx = clamp(mob.x + rand(-180, 180), 60, WORLD.W - 60); mob.ty = clamp(mob.y + rand(-180, 180), 60, WORLD.H - 60); }
           tx = mob.tx; ty = mob.ty;
         }
       }
       const dx = tx - mob.x, dy = ty - mob.y, d = Math.hypot(dx, dy) || 1;
-      const sp = (lure || d > 6) ? st.sp : 30;
+      const sp = chasing ? st.sp : 45;
       if (d > 4) this.mobMove(mob, dx / d, dy / d, sp, dt);
       // siege the planted beacon (authoritative beacon HP from the horde)
       if (isSiege && this.beacon.state === "planted" &&

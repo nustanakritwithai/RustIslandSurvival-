@@ -1067,9 +1067,22 @@ function nearestEnemyMelee(){ // nearest wolf or bot within melee reach
 /* ---------- shared winner leaderboard ---------- */
 async function loadBoard(){if(window.NET&&NET.connected&&NET.board)return NET.board; const raw=await store.get("lsi:winners",true);if(!raw)return[];try{return JSON.parse(raw)||[];}catch(e){return[];}}
 async function pushWinner(name,val){if(window.NET&&NET.connected)return; /* server owns the shared board */ let b=await loadBoard();b.unshift({name,val,ts:Date.now()});b=b.slice(0,12);await store.set("lsi:winners",JSON.stringify(b),true);}
+// Wipe everything carried over from a previous round so each round is a clean
+// start: no items, gear, banked stash, or buildings.
+function resetLoadout(){
+  G.inv.length=0;
+  G.equip={hand:null,body:null,head:null,back:null,feet:null};
+  G.hotbar=[null,null,null,null];
+  G.storage={};
+  if(G.player&&G.player.safe)G.player.safe=[null,null];
+  G.buildings.length=0;
+  G.core=null;
+  G.buildMode=null;G.editMode=null;
+}
 function deploy(){
   hide("cover");
   G.dead=false;G.paused=false;G.mapOpen=false;
+  resetLoadout(); // fresh start every round — items & buildings don't carry over
   if(!G.playerName)G.playerName="ผู้รอดชีวิต#"+(1000+Math.floor(Math.random()*9000));
   const s=slotInfo();
   G.round.dur=SLOT_MS/1000;
@@ -1371,9 +1384,13 @@ function buildTarget(){
   const p=G.player,def=ITEMS[G.buildMode];
   if(def&&def.place==="core")return {x:p.x,y:p.y};
   const GR=40;
-  let px=Math.round((p.x+GR*p.dir)/GR)*GR;
-  let py=Math.round(p.y/GR)*GR;
-  if(Math.abs(px-p.x)<30 && Math.abs(py-p.y)<30) px += GR*p.dir;
+  // place one tile in the cardinal direction you're aiming (up/down/left/right)
+  const a=p.aim||0,cx=Math.cos(a),cy=Math.sin(a);
+  let ox=0,oy=0;
+  if(Math.abs(cx)>=Math.abs(cy)) ox=cx>=0?1:-1; else oy=cy>=0?1:-1;
+  let px=Math.round((p.x+GR*ox)/GR)*GR;
+  let py=Math.round((p.y+GR*oy)/GR)*GR;
+  if(Math.abs(px-p.x)<30 && Math.abs(py-p.y)<30){ px+=GR*ox; py+=GR*oy; }
   return {x:px,y:py};
 }
 function nudgeOutOfWalls(){
