@@ -22,7 +22,7 @@
   window.netConnect = netConnect;
   function netOnDeploy(){ var name=(typeof G!=="undefined"&&G.playerName)?G.playerName:"player"; NET.name=name; if(!NET.ws||NET.ws.readyState>1) netConnect(name); else if(NET.connected) netSend({t:"join",name:name}); netStartPosLoop(); }
   window.netOnDeploy = netOnDeploy;
-  function netStartPosLoop(){ if(NET._posTimer)return; NET._posTimer=setInterval(function(){ if(!NET.connected||typeof G==="undefined"||!G.player)return; var p=G.player; netSend({t:"pos",x:Math.round(p.x),y:Math.round(p.y),dir:p.dir,hp:Math.round(p.hp),carrying:G.beacon&&G.beacon.state==="carried"&&G.beacon.owner===NET.id}); },100); }
+  function netStartPosLoop(){ if(NET._posTimer)return; NET._posTimer=setInterval(function(){ if(!NET.connected||typeof G==="undefined"||!G.player)return; var p=G.player; netSend({t:"pos",x:Math.round(p.x),y:Math.round(p.y),dir:p.dir,hp:Math.round(p.hp),carrying:G.beacon&&G.beacon.state==="carried"&&G.beacon.owner===NET.id,skin:(G.skin|0)}); },100); }
   function netHandle(m){
     if(!m||!m.t)return;
     if(m.t==="welcome"){ NET.id=m.id; if(m.slot)applyWorldSeed(m.slot.seed); if(m.nodes)applyDeadNodes(m.nodes); if(m.builds)applyBuilds(m.builds); if(m.board){NET.board=m.board;refreshBoardUI();} }
@@ -33,7 +33,7 @@
   function applySnapshot(m){
     NET.serverBeacon=m.beacon; NET.serverRound=m.slot; if(m.slot) applyWorldSeed(m.slot.seed);
     var seen={}, players=Array.isArray(m.players)?m.players:[];
-    for(var i=0;i<players.length;i++){ var pl=players[i]; if(pl.id===NET.id)continue; seen[pl.id]=1; var e=NET.players.get(pl.id); if(!e){e={x:pl.x,y:pl.y};NET.players.set(pl.id,e);} e.id=pl.id;e.name=pl.name;e.tx=pl.x;e.ty=pl.y;e.dir=pl.dir;e.hp=pl.hp;e.maxhp=100;e.dmgT=0;e.carrying=pl.carrying;e.col=e.col||humanCol(pl.id); }
+    for(var i=0;i<players.length;i++){ var pl=players[i]; if(pl.id===NET.id)continue; seen[pl.id]=1; var e=NET.players.get(pl.id); if(!e){e={x:pl.x,y:pl.y};NET.players.set(pl.id,e);} e.id=pl.id;e.name=pl.name;e.tx=pl.x;e.ty=pl.y;e.dir=pl.dir;e.hp=pl.hp;e.maxhp=100;e.dmgT=0;e.carrying=pl.carrying;e.col=e.col||humanCol(pl.id);e.skin=pl.skin; }
     NET.players.forEach(function(v,k){ if(!seen[k]) NET.players.delete(k); });
     var bseen={}, bots=Array.isArray(m.bots)?m.bots:[];
     for(var j=0;j<bots.length;j++){ var bt=bots[j]; bseen[bt.id]=1; var b=NET.botMap.get(bt.id); if(!b){b={x:bt.x,y:bt.y};NET.botMap.set(bt.id,b);} b.id=bt.id;b.name=bt.name;b.tx=bt.x;b.ty=bt.y;b.dir=bt.dir;b.hp=bt.hp;b.maxhp=bt.maxhp||90;b.col=bt.col;b.dmgT=0;b.carrying=bt.carrying; }

@@ -294,6 +294,9 @@ const ITEMS = {
   iron_axe:    {nm:"ขวานเหล็ก",  ic:"🪓", w:1.5, val:20, stack:1, tool:"axe", power:4, dur:200, slot:"hand"},
   iron_pick:   {nm:"อีเต้อเหล็ก",ic:"⛏️", w:1.6, val:20, stack:1, tool:"pick",power:4, dur:200, slot:"hand"},
   iron_spear:  {nm:"หอกเหล็ก",   ic:"🗡️", w:1.3, val:18, stack:1, weapon:34, dur:110, slot:"hand"},
+  machete:     {nm:"พร้า",       ic:"🔪", w:1.2, val:10, stack:1, weapon:22, dur:90,  slot:"hand", tool:"axe", power:2},
+  thai_sword:  {nm:"ดาบไทย",     ic:"⚔️", w:1.4, val:26, stack:1, weapon:38, dur:140, slot:"hand"},
+  crossbow:    {nm:"หน้าไม้",    ic:"🏹", w:1.6, val:16, stack:1, slot:"hand", weapon:24, ranged:true, ammo:"arrow", range:300, speed:560, cd:0.55, dur:90},
   iron_armor:  {nm:"เกราะเหล็ก", ic:"🛡️", w:4,   val:28, stack:1, slot:"body", armor:13, dur:160},
   iron_helm:   {nm:"หมวกเหล็ก",  ic:"⛑️", w:1.8, val:16, stack:1, slot:"head", armor:6, dur:140},
   leather_armor:{nm:"เสื้อเกราะหนัง",ic:"🦺",w:2.5,val:12,stack:1, slot:"body", armor:6,  dur:70},
@@ -368,6 +371,9 @@ const RECIPES = [
   {out:"iron_axe",     n:1, cost:{iron_ingot:2, wood:2, rope:1}, station:"table", tier:2, cat:"tool"},
   {out:"iron_pick",    n:1, cost:{iron_ingot:2, wood:2, rope:1}, station:"table", tier:2, cat:"tool"},
   {out:"iron_spear",   n:1, cost:{iron_ingot:2, wood:2, rope:1}, station:"table", tier:2, cat:"weapon"},
+  {out:"machete",      n:1, cost:{iron_ingot:1, wood:1, rope:1}, station:"table", tier:1, cat:"weapon"},
+  {out:"crossbow",     n:1, cost:{wood:5, rope:3, iron_ingot:1}, station:"table", tier:1, cat:"weapon"},
+  {out:"thai_sword",   n:1, cost:{iron_ingot:3, wood:1, rope:1}, station:"table", tier:2, cat:"weapon"},
   {out:"obsidian_spear",n:1,cost:{obsidian:3, iron_ingot:2, wood:2}, station:"table", tier:2, cat:"weapon"},
   {out:"iron_helm",    n:1, cost:{iron_ingot:3, rope:1}, station:"table", tier:2, cat:"armor"},
   {out:"iron_armor",   n:1, cost:{iron_ingot:6, rope:2}, station:"table", tier:2, cat:"armor"},
@@ -572,6 +578,7 @@ const G = {
   beacon:{state:"none"}, // none|incoming|crate|carried|planted (+x,y,hp,maxhp,owner)
   bots:[],           // AI survivors competing for the beacon
   playerName:"",
+  skin:0,            // Thai outfit index (window.SKINS)
 };
 const SLOT_MS = 1800000; // server round = real-time 30-minute slot
 function slotInfo(){const ms=Date.now();const start=Math.floor(ms/SLOT_MS)*SLOT_MS;return{start,end:start+SLOT_MS,remain:(start+SLOT_MS-ms)/1000,id:start};}
@@ -1826,7 +1833,7 @@ const store={
 };
 async function save(){
   const data={storage:G.storage,banked:G.banked,buildings:G.buildings.filter(b=>!b.bot&&!b.net),core:G.core,
-    bestRun:G.bestRun,equip:G.equip,hotbar:G.hotbar,safe:G.player.safe,name:G.playerName};
+    bestRun:G.bestRun,equip:G.equip,hotbar:G.hotbar,safe:G.player.safe,name:G.playerName,skin:G.skin};
   await store.set(KEY,JSON.stringify(data),false);
 }
 async function load(){
@@ -1835,6 +1842,7 @@ async function load(){
     G.storage=d.storage||{};G.banked=d.banked||0;G.buildings=d.buildings||[];G.core=d.core||null;G.bestRun=d.bestRun||0;
     if(d.equip)G.equip=Object.assign({hand:null,body:null,head:null,back:null,feet:null},d.equip);
     if(d.hotbar)G.hotbar=d.hotbar;
+    if(typeof d.skin==="number")G.skin=d.skin;
     if(d.safe)G.player.safe=d.safe;
     if(d.name)G.playerName=d.name;
   }catch(e){}
@@ -2879,6 +2887,8 @@ function showStart(){
     <div style="font-size:11px;color:var(--good);margin:-4px 0 6px">🌐 เซิร์ฟเวอร์ออนไลน์ · รีเซ็ตทุก 30 นาที · รอบนี้เหลือ <b>${fmtClock(s.remain)}</b></div>
     <div style="font-size:11px;opacity:.85;margin-bottom:6px">ชื่อคุณ: <b style="color:var(--amber)">${G.playerName}</b>
        <span class="danger-link" style="font-size:10px" onclick="renamePlayer()">เปลี่ยนชื่อ</span></div>
+    <div style="font-size:11px;opacity:.85;margin-bottom:8px">สกิน:
+       ${SKINS.map((sk,i)=>`<span onclick="setSkin(${i})" style="display:inline-block;cursor:pointer;margin:0 2px;padding:2px 7px;border-radius:10px;border:1px solid ${i===(G.skin||0)?'var(--amber)':'#3a342a'};background:${i===(G.skin||0)?'rgba(224,150,46,.18)':'transparent'}"><b style="color:${sk.shirt}">●</b> ${sk.nm}</span>`).join("")}</div>
     <p style="font-size:12px">เกาะนี้จะ <b style="color:var(--danger)">ระเบิดเมื่อหมดรอบ</b> — คุณกับผู้รอดชีวิตอื่น
        เตรียมตัว เก็บของ สร้างป้อม คราฟต์อาวุธ<br>
        ช่วงท้าย <b style="color:var(--amber)">📡 Airdrop</b> ตกกลางเกาะ — แย่ง <b>ตัวส่งสัญญาณ</b>
@@ -2900,6 +2910,13 @@ function showStart(){
   show("cover");
   renderBoard();
 }
+window.SKINS=[
+  {nm:"ชาวนา", shirt:"#294d61", pant:"#2b2a28"},
+  {nm:"ชาวเล",  shirt:"#2f6b63", pant:"#26302e"},
+  {nm:"พราน",   shirt:"#4f6b3a", pant:"#2e2a1e"},
+  {nm:"นักรบ",  shirt:"#7a2f3a", pant:"#2a2024"},
+];
+function setSkin(i){G.skin=((i%SKINS.length)+SKINS.length)%SKINS.length;save();showStart();}
 function renamePlayer(){const n=prompt("ตั้งชื่อผู้รอดชีวิต:",G.playerName);if(n&&n.trim()){G.playerName=n.trim().slice(0,16);showStart();}}
 async function renderBoard(){
   const list=await loadBoard();const el=$("board");if(!el)return;

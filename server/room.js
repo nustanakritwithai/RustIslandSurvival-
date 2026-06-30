@@ -109,7 +109,7 @@ export class GameRoom {
       this.players.set(ws.id, {
         ws,
         name: String(m.name || "player").slice(0, 16),
-        x: WORLD.W / 2, y: WORLD.H / 2, dir: 1, hp: 100, carrying: false,
+        x: WORLD.W / 2, y: WORLD.H / 2, dir: 1, hp: 100, carrying: false, skin: 0,
         last: Date.now(),
       });
       this.refreshBots();
@@ -131,6 +131,7 @@ export class GameRoom {
       p.dir = m.dir === -1 ? -1 : 1;
       p.hp = clamp(+m.hp || 0, 0, 999);
       p.carrying = !!m.carrying;
+      p.skin = m.skin | 0;
     } else if (m.t === "beacon") {
       const changed = handleBeaconAction(this.beacon, { id: ws.id, x: p.x, y: p.y }, m.action);
       if (changed) this.broadcastSnapshot();
@@ -417,7 +418,7 @@ export class GameRoom {
   broadcastSnapshot(s = slotInfo()) {
     const players = [];
     for (const [id, p] of this.players) {
-      players.push({ id, name: p.name, x: Math.round(p.x), y: Math.round(p.y), dir: p.dir, hp: p.hp, carrying: p.carrying });
+      players.push({ id, name: p.name, x: Math.round(p.x), y: Math.round(p.y), dir: p.dir, hp: p.hp, carrying: p.carrying, skin: p.skin || 0 });
     }
     const bots = this.bots.map((b) => ({
       id: b.id, name: b.name, x: Math.round(b.x), y: Math.round(b.y), dir: b.dir,

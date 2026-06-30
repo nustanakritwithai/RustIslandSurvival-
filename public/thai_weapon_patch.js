@@ -82,8 +82,8 @@
     }
 
     var oldRPlayer = rplayer, oldRBot = rbot;
-    rplayer=function(sx,sy){ var p=G.player||{}; var weapon=G.equip&&G.equip.hand?G.equip.hand.id:""; drawThaiHuman(p,sx,sy,{shirt:"#294d61",pant:"#2b2a28",weapon:weapon,hatScale:1}); drawNearbyCanopyOverlay(); };
-    rbot=function(o,sx,sy){ drawThaiHuman(o||{},sx,sy,{shirt:"#3e5f43",pant:"#342a23",weapon:"",skin:"#e3b184",hatScale:.86}); dot(sx,sy-30,2.1,"rgba(255,255,255,.72)"); };
+    rplayer=function(sx,sy){ var p=G.player||{}; var weapon=G.equip&&G.equip.hand?G.equip.hand.id:""; var SK=(window.SKINS&&window.SKINS[(G.skin||0)])||{shirt:"#294d61",pant:"#2b2a28"}; drawThaiHuman(p,sx,sy,{shirt:SK.shirt,pant:SK.pant,weapon:weapon,hatScale:1}); drawNearbyCanopyOverlay(); };
+    rbot=function(o,sx,sy){ var SK=(window.SKINS&&o&&o.skin!=null)?window.SKINS[o.skin]:null; drawThaiHuman(o||{},sx,sy,{shirt:SK?SK.shirt:"#3e5f43",pant:SK?SK.pant:"#342a23",weapon:"",skin:"#e3b184",hatScale:.86}); dot(sx,sy-30,2.1,"rgba(255,255,255,.72)"); };
     if(typeof toast==="function") setTimeout(function(){ toast("🏹 เพิ่มธนู/ปืน และแก้ฟาดซ้าย+ที่ขุดหินแล้ว"); },900);
   }
   setTimeout(install,0);
