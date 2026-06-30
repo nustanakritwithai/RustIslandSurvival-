@@ -28,6 +28,7 @@
     connected: false,
     players: new Map(),   // id -> {x,y,tx,ty,dir,hp,maxhp,name,col,dmgT,carrying}
     botMap: new Map(),    // id -> same shape (server bots)
+    mobById: new Map(),   // server mob id -> the G.wolves entry it drives
     serverBeacon: null,
     serverRound: null,    // {remain,id}
     board: null,
@@ -148,7 +149,33 @@
       b.col = bt.col; b.dmgT = 0; b.carrying = bt.carrying;
     }
     NET.botMap.forEach(function (v, k) { if (!bseen[k]) NET.botMap.delete(k); });
+
+    if (m.mobs) applyMobs(m.mobs);
   }
+
+  // Drive the shared monsters into G.wolves so the existing renderer and combat
+  // code work unchanged. Server is authoritative over position/HP/death.
+  function applyMobs(list) {
+    if (typeof G === "undefined" || !G.wolves) return;
+    var seen = {};
+    for (var i = 0; i < list.length; i++) {
+      var sm = list[i];
+      seen[sm.id] = 1;
+      var w = NET.mobById.get(sm.id);
+      if (!w) {
+        w = { kind: sm.kind, x: sm.x, y: sm.y, vx: 0, vy: 0, hp: sm.hp, maxhp: sm.maxhp,
+          state: "chase", t: 0, tx: sm.x, ty: sm.y, hitT: 0, dmgT: 0, spitT: 0, mode: null,
+          modeT: 0, cd: 0, wob: Math.random() * 6, dvx: 0, dvy: 0, flank: 0, nid: sm.id };
+        NET.mobById.set(sm.id, w);
+        G.wolves.push(w);
+      }
+      w.tx = sm.x; w.ty = sm.y; w.dir = sm.dir; w.maxhp = sm.maxhp; w.hp = sm.hp;
+    }
+    NET.mobById.forEach(function (w, id) {
+      if (!seen[id]) { removeFrom(G.wolves, w); NET.mobById.delete(id); }
+    });
+  }
+  function removeFrom(arr, item) { var i = arr.indexOf(item); if (i >= 0) arr.splice(i, 1); }
 
   function handleEvent(m) {
     var d = m.data || {};
@@ -163,9 +190,12 @@
     } else if (m.kind === "build") {
       if (d.op === "add") addNetBuild(d.b);
       else if (d.op === "del") delNetBuild(d.id);
+    } else if (m.kind === "mob") {
+      if (d.op === "del") onMobDeath(d);
     } else if (m.kind === "reset") {
       NET.serverBeacon = { state: "none" };
       if (typeof G !== "undefined") {
+        if (G.wolves) { G.wolves = G.wolves.filter(function (w) { return w.nid == null; }); NET.mobById.clear(); }
         if (G.buildings) G.buildings = G.buildings.filter(function (b) { return !b.net; }); // forts cleared each round
         if (d.slot && d.slot.id) G.round.slot = d.slot.id;
         if (d.slot) applyWorldSeed(d.slot.seed); // new round -> regenerate the shared island
@@ -238,6 +268,20 @@
     if (seed == null || typeof G === "undefined" || typeof regenWorld !== "function") return;
     if (G.worldSeed === seed) return;
     regenWorld(seed);
+  }
+
+  // A shared monster died on the server: remove it for everyone; the killer gets
+  // the kill credit + loot; everyone sees a death puff.
+  function onMobDeath(d) {
+    if (typeof G === "undefined") return;
+    var w = NET.mobById.get(d.id);
+    if (w) { removeFrom(G.wolves, w); NET.mobById.delete(d.id); }
+    if (typeof spawnFx === "function")
+      spawnFx(d.x, d.y, 6, "#c4452f", { spMin: 40, spMax: 120, grav: 140, lifeMin: 0.25, lifeMax: 0.5 });
+    if (d.killer && d.killer === NET.id) {
+      if (G.stats) G.stats.kills++;
+      if (G.loot) G.loot.push({ x: d.x, y: d.y, items: [{ id: "raw_meat", n: 1 }], t: 60, wolf: true });
+    }
   }
 
   function refreshBoardUI() {

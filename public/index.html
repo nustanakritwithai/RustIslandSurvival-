@@ -828,6 +828,25 @@ function wolfTick(dt){
     }
   }
 }
+// Online: monsters are server-owned. We only interpolate them and apply their
+// damage to OUR OWN player (survival stays client-side); movement/AI/death are
+// authoritative on the server.
+function netWolfTick(dt){
+  const p=G.player,k=Math.min(1,dt*10);
+  for(const w of G.wolves){
+    if(w.nid==null)continue;
+    if(w.tx!=null){w.x+=(w.tx-w.x)*k;w.y+=(w.ty-w.y)*k;}
+    w.hitT=Math.max(0,w.hitT-dt);w.dmgT=Math.max(0,w.dmgT-dt);
+    const m=MOB_TYPES[w.kind]||MOB_TYPES.wolf;
+    if(w.hitT<=0&&!G.dead&&dist2(w.x,w.y,p.x,p.y)<(m.r+15)*(m.r+15)){
+      damagePlayer(m.dmg,w.x,w.y);w.hitT=1.1;
+      if(m.inflict&&Math.random()<0.3){p.status=p.status||{};p.status[m.inflict]=Math.max(p.status[m.inflict]||0,5);
+        toast((m.inflict==="poison"?"🟢 โดนพิษ!":"🩸 เลือดไหล!")+" ใช้ยารักษา");}
+    }
+  }
+}
+// Report a hit on a shared monster so the server can adjudicate its HP/death.
+function reportMobHit(w,dmg){ if(window.NET&&NET.connected&&w&&w.nid!=null)netSend({t:"mobHit",id:w.nid,dmg}); }
 function invFeedbackDrop(){/* hook for fx, kept light */}
 
 /* ---------- combat / damage ---------- */
@@ -1114,7 +1133,7 @@ function attack(){
   p.atkT=0.22;
   const w=nearestEnemyMelee();
   if(w){ensureHandWeapon();const hd2=handDef();if(hd2&&hd2.ranged){if(p.shootCd<=0)fireRanged();return;}
-    const dmg=Math.round((handWeaponDmg()||2)*((G.player.buffs&&G.player.buffs.power)?1+BUFFS.power.dmg:1));w.hp-=dmg;w.dmgT=0.25;sfx("hit");
+    const dmg=Math.round((handWeaponDmg()||2)*((G.player.buffs&&G.player.buffs.power)?1+BUFFS.power.dmg:1));w.hp-=dmg;w.dmgT=0.25;sfx("hit");reportMobHit(w,dmg);
     const d=Math.hypot(w.x-p.x,w.y-p.y)||1;w.x+=(w.x-p.x)/d*22;w.y+=(w.y-p.y)/d*22;
     p.stam=clamp(p.stam-4,0,100);
     spawnFx(w.x,w.y,6,"#ffd27a",{spMin:60,spMax:150,grav:120,lifeMin:0.2,lifeMax:0.4,rMin:1.5,rMax:3});
@@ -1183,7 +1202,7 @@ function throwBomb(){
 function boom(pr){
   sfx("boom");
   const r=pr.blast||55;
-  for(const w of G.wolves){if(dist2(w.x,w.y,pr.x,pr.y)<r*r){w.hp-=pr.bd||60;w.dmgT=0.3;}}
+  for(const w of G.wolves){if(dist2(w.x,w.y,pr.x,pr.y)<r*r){w.hp-=pr.bd||60;w.dmgT=0.3;reportMobHit(w,pr.bd||60);}}
   for(const b of G.bots){if(b.hp>0&&dist2(b.x,b.y,pr.x,pr.y)<r*r){b.hp-=pr.bd||60;b.dmgT=0.3;}}
   for(let bi=G.buildings.length-1;bi>=0;bi--){const bd=G.buildings[bi];
     if(dist2(bd.x,bd.y,pr.x,pr.y)<(r+8)*(r+8)){bd.hp-=(pr.bd||60)*1.2;
@@ -1208,7 +1227,7 @@ function projTick(dt){
     }
     if(pr.explode){ if(pr.t>=pr.life||wall||oob){boom(pr);G.projectiles.splice(i,1);} continue; }
     let hitWolf=false;
-    for(const w of G.wolves){if(dist2(w.x,w.y,pr.x,pr.y)<20*20){w.hp-=pr.dmg;w.dmgT=0.25;
+    for(const w of G.wolves){if(dist2(w.x,w.y,pr.x,pr.y)<20*20){w.hp-=pr.dmg;w.dmgT=0.25;reportMobHit(w,pr.dmg);
       spawnFx(w.x,w.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;break;}}
     if(!hitWolf)for(const b of G.bots){if(b.hp>0&&dist2(b.x,b.y,pr.x,pr.y)<18*18){b.hp-=pr.dmg;b.dmgT=0.25;
       spawnFx(b.x,b.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;break;}}
@@ -1956,8 +1975,7 @@ function update(dt){
   // loot decay
   for(let i=G.loot.length-1;i>=0;i--){G.loot[i].t-=dt;if(G.loot[i].t<=0||!G.loot[i].items.length)G.loot.splice(i,1);}
   autoDoors();
-  wolfTick(dt);
-  if(window.NET&&NET.connected){G.bots.length=0;}else{botTick(dt);} // server replaces local bots
+  if(window.NET&&NET.connected){netWolfTick(dt);G.bots.length=0;}else{wolfTick(dt);botTick(dt);} // server owns monsters+bots online
   horseTick(dt);
   turretTick(dt);
   projTick(dt);

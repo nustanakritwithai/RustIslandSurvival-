@@ -15,6 +15,24 @@ const BOT_COLS = ["#3a6ea5", "#a53a5a", "#6a8a3a", "#8a5a2a", "#5a3a8a"];
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const ri = (a, b) => Math.floor(rand(a, b + 1));
+
+// Minimal monster stats (positions/HP/AI are authoritative here; the client
+// renders kind-specific visuals). Server AI is simplified to chase + siege.
+const MOBS = {
+  wolf: { hp: 30, sp: 86, dmg: 7, r: 13 },
+  boar: { hp: 75, sp: 58, dmg: 17, r: 16 },
+  bat: { hp: 14, sp: 122, dmg: 4, r: 9 },
+  scorpion: { hp: 60, sp: 96, dmg: 13, r: 14 },
+  bear: { hp: 150, sp: 64, dmg: 25, r: 19 },
+};
+function pickKind() {
+  const r = Math.random();
+  if (r < 0.6) return "wolf";
+  if (r < 0.78) return "boar";
+  if (r < 0.9) return "bat";
+  if (r < 0.97) return "scorpion";
+  return "bear";
+}
 const botName = () => BOT_NAMES_A[ri(0, BOT_NAMES_A.length - 1)] + BOT_NAMES_B[ri(0, BOT_NAMES_B.length - 1)];
 
 export class GameRoom {
@@ -24,6 +42,8 @@ export class GameRoom {
     this.deadNodes = new Map(); // node index -> respawn-at ms (shared resource depletion)
     this.builds = new Map();    // id -> {id,t,x,y,hp} shared walls/doors (shared forts)
     this._bid = 1;
+    this.mobs = [];             // shared authoritative monsters
+    this._mid = 1;
     this.beacon = newBeacon();
     this.board = new Leaderboard();
     this.slot = slotInfo();
@@ -102,6 +122,21 @@ export class GameRoom {
       }
     } else if (m.t === "build") {
       this.handleBuild(m);
+    } else if (m.t === "mobHit") {
+      // player-reported damage on a shared monster; server is authoritative on death
+      const id = m.id | 0;
+      const dmg = clamp(+m.dmg || 0, 0, 500);
+      const i = this.mobs.findIndex((x) => x.id === id);
+      if (i >= 0) {
+        this.mobs[i].hp -= dmg;
+        if (this.mobs[i].hp <= 0) {
+          const dead = this.mobs.splice(i, 1)[0];
+          this.broadcast({
+            t: "event", kind: "mob",
+            data: { op: "del", id: dead.id, kind: dead.kind, x: Math.round(dead.x), y: Math.round(dead.y), killer: ws.id },
+          });
+        }
+      }
     } else if (m.t === "ping") {
       ws.send(encode({ t: "pong" }));
     }
@@ -231,6 +266,97 @@ export class GameRoom {
     }
   }
 
+  // ---- shared monsters ----
+  // Walls and (closed) doors block monsters. Monsters can't open doors, so a
+  // walled fort with doors genuinely keeps them out.
+  mobBlocked(x, y) {
+    for (const b of this.builds.values()) {
+      if (Math.abs(x - b.x) < 22 && Math.abs(y - b.y) < 22) return true;
+    }
+    return false;
+  }
+
+  mobMove(mob, sx, sy, sp, dt) {
+    const nx = clamp(mob.x + sx * sp * dt, 40, WORLD.W - 40);
+    const ny = clamp(mob.y + sy * sp * dt, 40, WORLD.H - 40);
+    let mx = false, my = false;
+    if (!this.mobBlocked(nx, mob.y)) { mob.x = nx; mx = true; }
+    if (!this.mobBlocked(mob.x, ny)) { mob.y = ny; my = true; }
+    if (!mx && !my) { // corner: try sliding perpendicular around the wall
+      const px = -sy, py = sx;
+      const ax = clamp(mob.x + px * sp * dt, 40, WORLD.W - 40);
+      const ay = clamp(mob.y + py * sp * dt, 40, WORLD.H - 40);
+      if (!this.mobBlocked(ax, ay)) { mob.x = ax; mob.y = ay; }
+    }
+    if (sx > 0.2) mob.dir = 1; else if (sx < -0.2) mob.dir = -1;
+  }
+
+  // Where the monsters converge: the planted beacon, the carrier, else nothing.
+  beaconLure() {
+    const b = this.beacon;
+    if (b.state === "planted") return { x: b.x, y: b.y, siege: true };
+    if (b.state === "carried") {
+      const h = this.players.get(b.owner);
+      if (h) return { x: h.x, y: h.y };
+      const bot = this.bots.find((z) => z.id === b.owner);
+      if (bot) return { x: bot.x, y: bot.y };
+    }
+    return null;
+  }
+
+  nearestTarget(mob) {
+    let best = null, bd = Infinity;
+    const consider = (e) => { const d = dist2(mob.x, mob.y, e.x, e.y); if (d < bd) { bd = d; best = e; } };
+    for (const p of this.players.values()) consider(p);
+    for (const b of this.bots) consider(b);
+    return best;
+  }
+
+  mobTick(dt, s) {
+    const finale = this.beacon.state === "planted" || this.beacon.state === "carried";
+    const esc = s.remain > 240 ? 0.2 : s.remain > 120 ? 0.55 : s.remain > 60 ? 0.8 : 1;
+    const cap = Math.round(4 + esc * 8) + (finale ? 7 : 0) + Math.min(8, this.players.size * 2);
+    const anyone = this.players.size + this.bots.length > 0;
+
+    // spawn over time, away from anyone, in open ground
+    if (anyone && this.mobs.length < cap && Math.random() < dt * (0.4 + esc * 1.2 + (finale ? 0.6 : 0))) {
+      for (let k = 0; k < 10; k++) {
+        const x = rand(120, WORLD.W - 120), y = rand(120, WORLD.H - 120);
+        if (this.mobBlocked(x, y)) continue;
+        let near = false;
+        for (const p of this.players.values()) { if (dist2(x, y, p.x, p.y) < (finale ? 360 : 520) ** 2) { near = true; break; } }
+        if (near) continue;
+        const kind = pickKind();
+        this.mobs.push({ id: this._mid++, kind, x, y, dir: 1, hp: MOBS[kind].hp, maxhp: MOBS[kind].hp, t: rand(1, 3), tx: x, ty: y });
+        break;
+      }
+    }
+
+    const lure = this.beaconLure();
+    for (const mob of this.mobs) {
+      const st = MOBS[mob.kind] || MOBS.wolf;
+      let tx, ty, isSiege = false;
+      if (lure) { tx = lure.x; ty = lure.y; isSiege = !!lure.siege; }
+      else {
+        const t = this.nearestTarget(mob);
+        if (t && dist2(mob.x, mob.y, t.x, t.y) < 520 * 520) { tx = t.x; ty = t.y; }
+        else { // wander
+          mob.t -= dt;
+          if (mob.t <= 0) { mob.t = rand(2, 5); mob.tx = clamp(mob.x + rand(-180, 180), 60, WORLD.W - 60); mob.ty = clamp(mob.y + rand(-180, 180), 60, WORLD.H - 60); }
+          tx = mob.tx; ty = mob.ty;
+        }
+      }
+      const dx = tx - mob.x, dy = ty - mob.y, d = Math.hypot(dx, dy) || 1;
+      const sp = (lure || d > 6) ? st.sp : 30;
+      if (d > 4) this.mobMove(mob, dx / d, dy / d, sp, dt);
+      // siege the planted beacon (authoritative beacon HP from the horde)
+      if (isSiege && this.beacon.state === "planted" &&
+          dist2(mob.x, mob.y, this.beacon.x, this.beacon.y) < (st.r + 22) * (st.r + 22)) {
+        damageBeacon(this.beacon, st.dmg * dt);
+      }
+    }
+  }
+
   // ---- round resolution ----
   resolveEnd() {
     const b = this.beacon;
@@ -275,6 +401,7 @@ export class GameRoom {
       this.beacon = newBeacon();
       this.deadNodes.clear(); // fresh island next round
       this.builds.clear();    // forts don't carry across rounds
+      this.mobs = [];
       this.slot = s;
       this.spawnBots();
       this.refreshBots();
@@ -293,6 +420,7 @@ export class GameRoom {
     if (ev) this.broadcast({ t: "event", kind: ev, data: { x: this.beacon.x, y: this.beacon.y } });
 
     this.botTick(dt);
+    this.mobTick(dt, s);
     this.broadcastSnapshot(s);
   }
 
@@ -305,10 +433,13 @@ export class GameRoom {
       id: b.id, name: b.name, x: Math.round(b.x), y: Math.round(b.y), dir: b.dir,
       hp: b.hp, maxhp: b.maxhp, col: b.col, carrying: this.beacon.owner === b.id && this.beacon.state === "carried",
     }));
+    const mobs = this.mobs.map((m) => ({
+      id: m.id, kind: m.kind, x: Math.round(m.x), y: Math.round(m.y), dir: m.dir, hp: Math.round(m.hp), maxhp: m.maxhp,
+    }));
     this.broadcast({
       t: "snapshot", now: Date.now(),
       slot: { remain: s.remain, id: s.id, seed: s.seed },
-      players, bots, beacon: this.beacon,
+      players, bots, beacon: this.beacon, mobs,
     });
   }
 
