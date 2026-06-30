@@ -1082,9 +1082,12 @@ function resetLoadout(){
 function deploy(){
   hide("cover");
   G.dead=false;G.paused=false;G.mapOpen=false;
-  resetLoadout(); // fresh start every round — items & buildings don't carry over
   if(!G.playerName)G.playerName="ผู้รอดชีวิต#"+(1000+Math.floor(Math.random()*9000));
   const s=slotInfo();
+  // wipe only when a brand-new round starts. Dying mid-round keeps your stashed
+  // box + base (the box is meant to be safe across deaths).
+  if(s.id!==G.lastSlot)resetLoadout();
+  G.lastSlot=s.id;
   G.round.dur=SLOT_MS/1000;
   G.round.active=true;G.round.time=s.remain;G.round.slot=s.id;
   G.stats={gathered:0,kills:0,hits:0,harvests:0};
