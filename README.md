@@ -90,11 +90,26 @@ test multiplayer.
 - **Phase 1 — MVP multiplayer:** ✅ shared round clock, live player positions,
   authoritative airdrop/beacon, server-decided winner, shared leaderboard,
   filler bots, auto-reconnect, disconnect drops the carried beacon.
-- **Phase 2 — authoritative world (next):** move monsters/resources/beacon-HP
-  fully server-side, interest management for the 6400×4400 world, server-side
-  validation (anti-cheat).
+- **Phase 2 — authoritative shared world:** in progress.
+  - 2a ✅ deterministic island from a shared per-round server seed (everyone gets
+    the same layout).
+  - 2b ✅ authoritative resource nodes (shared depletion + respawn; late joiners
+    see the picked-over island).
+  - 2c ✅ shared walls & doors (forts are visible to and collide for everyone).
+  - 2d ✅ shared monsters: server-owned positions/HP/AI, wall-aware pathing, and
+    an authoritative beacon siege; players' hits are adjudicated server-side.
+  - 2e ⏳ next: deeper anti-cheat validation + interest management for the
+    6400×4400 world (only send entities near each player).
 - **Phase 3 — hardening:** multiple rooms/shards, rate limiting, DB-backed
   leaderboard on a persistent disk.
+
+### Online vs offline behaviour
+When connected, the island layout, resource depletion, walls/doors, monsters, the
+airdrop/beacon, and the leaderboard are all server-authoritative and shared.
+Per-player and still client-side: your movement, inventory/crafting, survival
+(hunger/thirst/HP/armor), and utility structures (storage box, crafting table,
+furnace, turret, territory core). With no connection the game runs the original
+single-player + local-bots experience unchanged.
 
 ### MVP caveats
 - Positions and `beaconDmg` are client-reported (trusted for now) — Phase 2 moves
