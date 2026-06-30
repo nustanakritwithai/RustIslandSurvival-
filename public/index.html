@@ -2473,7 +2473,7 @@ function rbot(b,x,y){
   ctx.fillStyle="#3a4a63";ctx.beginPath();ctx.ellipse(-3,9,2.6,4,0,0,7);ctx.fill();ctx.beginPath();ctx.ellipse(3,9,2.6,4,0,0,7);ctx.fill();
   ctx.fillStyle=b.dmgT>0?"#ffb3a7":b.col;ctx.beginPath();ctx.ellipse(0,1,7.5,8.5,0,0,7);ctx.fill();
   ctx.fillStyle="#e8c39a";ctx.beginPath();ctx.arc(2*b.dir,-8,6,0,7);ctx.fill();
-  ctx.fillStyle="#2a2018";ctx.beginPath();ctx.arc(2*b.dir,-11,6,Math.PI*1.05,Math.PI*1.95);ctx.fill();
+  ngobHat(2*b.dir,-11); // หมวกงอบ — everyone on the island wears one
   ctx.restore();
   if(G.beacon.state==="carried"&&G.beacon.owner===b.id){ctx.font="13px sans-serif";ctx.textAlign="center";ctx.fillText("📡",x,y-22);ctx.textAlign="left";}
   ctx.fillStyle="#cdbfa3";ctx.font="8px sans-serif";ctx.textAlign="center";ctx.fillText(b.name,x,y-(G.beacon.owner===b.id&&G.beacon.state==="carried"?30:20));ctx.textAlign="left";
@@ -2515,6 +2515,14 @@ function drawTool(g,kind,sw,col){
     g.fillStyle="#4a4034";g.fillRect(-3,0,5,6);}
   g.restore();
 }
+// หมวกงอบ — Thai conical farmer hat (drawn in the actor's local space, facing +x)
+function ngobHat(cx,cy){
+  ctx.fillStyle="#d2ad60";ctx.beginPath();ctx.ellipse(cx,cy,10,3.4,0,0,7);ctx.fill(); // wide brim
+  ctx.fillStyle="rgba(90,66,30,.35)";ctx.beginPath();ctx.ellipse(cx,cy+0.6,10,3.4,0,0,Math.PI);ctx.fill(); // brim underside
+  ctx.fillStyle="#e2c074";ctx.beginPath();ctx.moveTo(cx-6,cy);ctx.quadraticCurveTo(cx,cy-9,cx+6,cy);ctx.closePath();ctx.fill(); // cone dome
+  ctx.strokeStyle="rgba(120,88,38,.5)";ctx.lineWidth=0.8;
+  ctx.beginPath();ctx.moveTo(cx-5,cy-1);ctx.lineTo(cx,cy-7);ctx.moveTo(cx+5,cy-1);ctx.lineTo(cx,cy-7);ctx.stroke();
+}
 function rplayer(x,y){
   const p=G.player;
   const swingT = p.atkT>0 ? 1-p.atkT/0.22 : (p.hitT>0 ? 1-p.hitT/0.16 : -1);
@@ -2530,7 +2538,7 @@ function rplayer(x,y){
   ctx.translate(0,bob);
   const hasBody=!!G.equip.body, hasHead=!!G.equip.head, hasFeet=!!G.equip.feet, hasBack=!!G.equip.back;
   const skin="#e8c39a";
-  const shirt=p.dmgT>0?"#ff7a6a":(hasBody?"#8a6a3a":"#4a7a5c");   // leather armor = brown
+  const shirt=p.dmgT>0?"#ff7a6a":(hasBody?"#8a6a3a":"#2f4a6b");   // ม่อฮ่อม indigo (no armor) / leather brown
   const pants=hasFeet?"#5a4326":"#3a4a63";                         // boots tint legs
   const pack="#6e4f2c";
   // ---- legs (behind body) ----
@@ -2551,11 +2559,14 @@ function rplayer(x,y){
     ctx.fillStyle="rgba(255,255,255,.12)";ctx.beginPath();ctx.ellipse(-2,-2,3,4,0,0,7);ctx.fill();}
   // ---- head ----
   ctx.fillStyle=skin;ctx.beginPath();ctx.arc(2,-8,6.5,0,7);ctx.fill();
-  if(hasHead){ // helmet replaces hair
+  if(hasHead){ // helmet replaces hat
     ctx.fillStyle="#6e4f2c";ctx.beginPath();ctx.arc(2,-9,7,Math.PI*1.02,Math.PI*1.98);ctx.fill();
-    ctx.fillStyle="#4a3318";ctx.fillRect(-5,-9,14,2);}
-  else{ctx.fillStyle="#3a2e22";ctx.beginPath();ctx.arc(2,-11,6.5,Math.PI*1.05,Math.PI*1.95);ctx.fill();} // hair
-  ctx.fillStyle="#241a14";ctx.beginPath();ctx.arc(6,-8,1.2,0,7);ctx.fill(); // eye toward facing
+    ctx.fillStyle="#4a3318";ctx.fillRect(-5,-9,14,2);
+    ctx.fillStyle="#241a14";ctx.beginPath();ctx.arc(6,-8,1.2,0,7);ctx.fill();
+  }else{ // หมวกงอบ + eye below the brim
+    ngobHat(2,-11);
+    ctx.fillStyle="#241a14";ctx.beginPath();ctx.arc(6,-6.5,1.2,0,7);ctx.fill();
+  }
   // ---- front arm + held tool ----
   const held=heldVisual();
   const sw = acting? Math.sin(swingT*Math.PI) : 0;
