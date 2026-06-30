@@ -242,24 +242,28 @@ export class GameRoom {
   // ---- shared monsters ----
   // Walls and (closed) doors block monsters. Monsters can't open doors, so a
   // walled fort with doors genuinely keeps them out.
-  mobBlocked(x, y) {
+  // pad lets callers reserve space for a body radius so monsters can't clip into
+  // a wall or squeeze through the diagonal gap between two wall tiles.
+  mobBlocked(x, y, pad = 0) {
+    const r = 22 + pad;
     for (const b of this.builds.values()) {
-      if (Math.abs(x - b.x) < 22 && Math.abs(y - b.y) < 22) return true;
+      if (Math.abs(x - b.x) < r && Math.abs(y - b.y) < r) return true;
     }
     return false;
   }
 
   mobMove(mob, sx, sy, sp, dt) {
+    const pad = (MOBS[mob.kind] || MOBS.wolf).r; // collide using the body radius
     const nx = clamp(mob.x + sx * sp * dt, 40, WORLD.W - 40);
     const ny = clamp(mob.y + sy * sp * dt, 40, WORLD.H - 40);
     let mx = false, my = false;
-    if (!this.mobBlocked(nx, mob.y)) { mob.x = nx; mx = true; }
-    if (!this.mobBlocked(mob.x, ny)) { mob.y = ny; my = true; }
+    if (!this.mobBlocked(nx, mob.y, pad)) { mob.x = nx; mx = true; }
+    if (!this.mobBlocked(mob.x, ny, pad)) { mob.y = ny; my = true; }
     if (!mx && !my) { // corner: try sliding perpendicular around the wall
       const px = -sy, py = sx;
       const ax = clamp(mob.x + px * sp * dt, 40, WORLD.W - 40);
       const ay = clamp(mob.y + py * sp * dt, 40, WORLD.H - 40);
-      if (!this.mobBlocked(ax, ay)) { mob.x = ax; mob.y = ay; }
+      if (!this.mobBlocked(ax, ay, pad)) { mob.x = ax; mob.y = ay; }
     }
     if (sx > 0.2) mob.dir = 1; else if (sx < -0.2) mob.dir = -1;
   }
@@ -281,7 +285,7 @@ export class GameRoom {
     if (anyone && this.mobs.length < cap && Math.random() < dt * (1.6 + esc * 2.2)) {
       for (let k = 0; k < 12; k++) {
         const x = rand(120, WORLD.W - 120), y = rand(120, WORLD.H - 120);
-        if (this.mobBlocked(x, y)) continue;
+        if (this.mobBlocked(x, y, 60)) continue; // keep spawns clear of walls/forts
         let near = false;
         for (const p of this.players.values()) { if (dist2(x, y, p.x, p.y) < 360 ** 2) { near = true; break; } }
         if (near) continue;

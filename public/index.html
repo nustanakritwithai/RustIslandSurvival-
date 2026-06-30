@@ -1145,7 +1145,7 @@ function gather(node){
   spawnFx(node.x,node.y,node.type==="water"?5:4,cc,{dir:ang,spMin:40,spMax:110,grav:node.type==="water"?60:180,lifeMin:0.25,lifeMax:0.5,up:20});
   if(node.hp<=0){
     let got=[];
-    const give=(y)=>{for(const k in y){const a=ri(y[k][0],y[k][1]);if(a>0){const added=invAdd(k,a);if(added){got.push(ITEMS[k].nm+" x"+added);G.stats.gathered+=added;}}}};
+    const give=(y)=>{for(const k in y){const a=ri(y[k][0],y[k][1])*2;if(a>0){const added=invAdd(k,a);if(added){got.push(ITEMS[k].nm+" x"+added);G.stats.gathered+=added;}}}};
     give(t.yield); if(t.extra)give(t.extra);
     G.stats.harvests++;
     if(got.length)toast(got.join(", ")); else toast("กระเป๋าเต็ม!");
