@@ -19,11 +19,11 @@ const ri = (a, b) => Math.floor(rand(a, b + 1));
 // Minimal monster stats (positions/HP/AI are authoritative here; the client
 // renders kind-specific visuals). Server AI is simplified to chase + siege.
 const MOBS = {
-  wolf: { hp: 18, sp: 96, dmg: 7, r: 13 },
-  boar: { hp: 40, sp: 70, dmg: 15, r: 16 },
-  bat: { hp: 9, sp: 130, dmg: 4, r: 9 },
-  scorpion: { hp: 32, sp: 104, dmg: 12, r: 14 },
-  bear: { hp: 85, sp: 74, dmg: 22, r: 19 },
+  wolf: { hp: 18, sp: 96, dmg: 7, r: 13, detect: 300 },
+  boar: { hp: 40, sp: 70, dmg: 15, r: 16, detect: 280 },
+  bat: { hp: 9, sp: 130, dmg: 4, r: 9, detect: 430 },
+  scorpion: { hp: 32, sp: 104, dmg: 12, r: 14, detect: 330 },
+  bear: { hp: 85, sp: 74, dmg: 22, r: 19, detect: 300 },
 };
 function pickKind() {
   const r = Math.random();
@@ -263,19 +263,6 @@ export class GameRoom {
     if (sx > 0.2) mob.dir = 1; else if (sx < -0.2) mob.dir = -1;
   }
 
-  // Where the monsters converge: the planted beacon, the carrier, else nothing.
-  beaconLure() {
-    const b = this.beacon;
-    if (b.state === "planted") return { x: b.x, y: b.y, siege: true };
-    if (b.state === "carried") {
-      const h = this.players.get(b.owner);
-      if (h) return { x: h.x, y: h.y };
-      const bot = this.bots.find((z) => z.id === b.owner);
-      if (bot) return { x: bot.x, y: bot.y };
-    }
-    return null;
-  }
-
   nearestTarget(mob) {
     let best = null, bd = Infinity;
     const consider = (e) => { const d = dist2(mob.x, mob.y, e.x, e.y); if (d < bd) { bd = d; best = e; } };
@@ -285,19 +272,17 @@ export class GameRoom {
   }
 
   mobTick(dt, s) {
-    const finale = this.beacon.state === "planted" || this.beacon.state === "carried";
     const esc = s.remain > 240 ? 0.3 : s.remain > 120 ? 0.6 : s.remain > 60 ? 0.85 : 1;
-    // more monsters overall, and a real horde during the finale
-    const cap = Math.round(8 + esc * 14) + (finale ? 12 : 0) + Math.min(12, this.players.size * 3);
+    const cap = Math.round(8 + esc * 14) + Math.min(12, this.players.size * 3);
     const anyone = this.players.size + this.bots.length > 0;
 
-    // spawn quickly, just off-screen from players, in open ground
-    if (anyone && this.mobs.length < cap && Math.random() < dt * (1.0 + esc * 2.2 + (finale ? 1.2 : 0))) {
+    // spawn over time, away from players, in open ground
+    if (anyone && this.mobs.length < cap && Math.random() < dt * (1.0 + esc * 2.0)) {
       for (let k = 0; k < 12; k++) {
         const x = rand(120, WORLD.W - 120), y = rand(120, WORLD.H - 120);
         if (this.mobBlocked(x, y)) continue;
         let near = false;
-        for (const p of this.players.values()) { if (dist2(x, y, p.x, p.y) < 420 ** 2) { near = true; break; } }
+        for (const p of this.players.values()) { if (dist2(x, y, p.x, p.y) < 360 ** 2) { near = true; break; } }
         if (near) continue;
         const kind = pickKind();
         this.mobs.push({ id: this._mid++, kind, x, y, dir: 1, hp: MOBS[kind].hp, maxhp: MOBS[kind].hp, t: rand(1, 3), tx: x, ty: y });
@@ -305,28 +290,32 @@ export class GameRoom {
       }
     }
 
-    const lure = this.beaconLure();
     for (const mob of this.mobs) {
       const st = MOBS[mob.kind] || MOBS.wolf;
-      let tx, ty, isSiege = false, chasing = false;
-      if (lure) { tx = lure.x; ty = lure.y; isSiege = !!lure.siege; chasing = true; }
-      else {
-        const t = this.nearestTarget(mob); // always head toward the nearest survivor so they actually close in
-        if (t) { tx = t.x; ty = t.y; chasing = true; }
-        else { // truly nobody: drift
-          mob.t -= dt;
-          if (mob.t <= 0) { mob.t = rand(2, 5); mob.tx = clamp(mob.x + rand(-180, 180), 60, WORLD.W - 60); mob.ty = clamp(mob.y + rand(-180, 180), 60, WORLD.H - 60); }
-          tx = mob.tx; ty = mob.ty;
+      // chase the nearest survivor only when within detection range (avoidable,
+      // like the original). The beacon is NOT a target — monsters never swarm it.
+      const t = this.nearestTarget(mob);
+      const sees = t && dist2(mob.x, mob.y, t.x, t.y) < st.detect * st.detect;
+      let tx, ty;
+      if (sees) { tx = t.x; ty = t.y; }
+      else { // wander, drifting gently toward the nearest survivor so the island isn't dead
+        mob.t -= dt;
+        if (mob.t <= 0) {
+          mob.t = rand(2, 4);
+          if (t) {
+            const ang = Math.atan2(t.y - mob.y, t.x - mob.x) + rand(-0.9, 0.9);
+            mob.tx = clamp(mob.x + Math.cos(ang) * 220, 60, WORLD.W - 60);
+            mob.ty = clamp(mob.y + Math.sin(ang) * 220, 60, WORLD.H - 60);
+          } else {
+            mob.tx = clamp(mob.x + rand(-180, 180), 60, WORLD.W - 60);
+            mob.ty = clamp(mob.y + rand(-180, 180), 60, WORLD.H - 60);
+          }
         }
+        tx = mob.tx; ty = mob.ty;
       }
       const dx = tx - mob.x, dy = ty - mob.y, d = Math.hypot(dx, dy) || 1;
-      const sp = chasing ? st.sp : 45;
+      const sp = sees ? st.sp : 42;
       if (d > 4) this.mobMove(mob, dx / d, dy / d, sp, dt);
-      // siege the planted beacon (authoritative beacon HP from the horde)
-      if (isSiege && this.beacon.state === "planted" &&
-          dist2(mob.x, mob.y, this.beacon.x, this.beacon.y) < (st.r + 22) * (st.r + 22)) {
-        damageBeacon(this.beacon, st.dmg * dt);
-      }
     }
   }
 
