@@ -237,7 +237,7 @@ export class GameRoom {
       this.slot = s;
       this.spawnBots();
       this.refreshBots();
-      this.broadcast({ t: "event", kind: "reset", data: { slot: { id: s.id, remain: s.remain } } });
+      this.broadcast({ t: "event", kind: "reset", data: { slot: { id: s.id, remain: s.remain, seed: s.seed } } });
     }
 
     const ev = advanceAirdrop(this.beacon, s.remain);
@@ -258,7 +258,7 @@ export class GameRoom {
     }));
     this.broadcast({
       t: "snapshot", now: Date.now(),
-      slot: { remain: s.remain, id: s.id },
+      slot: { remain: s.remain, id: s.id, seed: s.seed },
       players, bots, beacon: this.beacon,
     });
   }

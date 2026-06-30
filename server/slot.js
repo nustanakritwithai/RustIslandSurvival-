@@ -11,5 +11,13 @@ export function slotInfo(nowMs = Date.now()) {
     end: start + SLOT_MS,
     remain: (start + SLOT_MS - nowMs) / 1000, // seconds left in this round
     id: start,                                  // unique id for this round
+    seed: slotSeed(start),                       // shared world seed for this round
   };
+}
+
+// Deterministic per-round seed so every client generates the SAME island layout
+// for a given round. Derived from the slot id, so it is stable within a round
+// and changes each round.
+export function slotSeed(id) {
+  return (Math.floor(id / SLOT_MS) * 2654435761) % 2147483647 >>> 0 || 1;
 }

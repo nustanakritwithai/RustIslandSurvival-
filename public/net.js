@@ -103,6 +103,7 @@
     if (!m || !m.t) return;
     if (m.t === "welcome") {
       NET.id = m.id;
+      if (m.slot) applyWorldSeed(m.slot.seed);
       if (m.board) { NET.board = m.board; refreshBoardUI(); }
     } else if (m.t === "snapshot") {
       applySnapshot(m);
@@ -117,6 +118,7 @@
   function applySnapshot(m) {
     NET.serverBeacon = m.beacon;
     NET.serverRound = m.slot;
+    if (m.slot) applyWorldSeed(m.slot.seed);
 
     // other players
     var seen = {};
@@ -158,6 +160,7 @@
       NET.serverBeacon = { state: "none" };
       if (typeof G !== "undefined") {
         if (d.slot && d.slot.id) G.round.slot = d.slot.id;
+        if (d.slot) applyWorldSeed(d.slot.seed); // new round -> regenerate the shared island
         if (G.round.active) G.beacon = { state: "none" };
       }
     }
@@ -189,6 +192,13 @@
       recordRun(winnerName ? "botwin" : "timeout",
         { lost: bag, lostVal: lostVal, winner: winnerName || "" });
     }
+  }
+
+  // Regenerate the local island when the server's shared seed changes.
+  function applyWorldSeed(seed) {
+    if (seed == null || typeof G === "undefined" || typeof regenWorld !== "function") return;
+    if (G.worldSeed === seed) return;
+    regenWorld(seed);
   }
 
   function refreshBoardUI() {
