@@ -1075,7 +1075,7 @@ function resetLoadout(){
   G.hotbar=[null,null,null,null];
   G.storage={};
   if(G.player&&G.player.safe)G.player.safe=[null,null];
-  G.buildings.length=0;
+  G.buildings=G.buildings.filter(b=>b.net); // keep shared forts; clear only your own structures
   G.core=null;
   G.buildMode=null;G.editMode=null;
 }
@@ -1099,6 +1099,7 @@ function deploy(){
   if(G.extracts[0]){G.extracts[0].x=sp.x;G.extracts[0].y=G.core?G.core.y:SPAWN.y;}
   for(const e of G.extracts)e.prog=0;
   G.wolves.length=0; G.projectiles.length=0; G.mounted=null; G.beacon={state:"none"}; G._airWarn=false;
+  if(window.NET&&NET.mobById)NET.mobById.clear(); // drop stale refs so server monsters re-sync after respawn
   G.buildings=G.buildings.filter(b=>!b.bot); // never keep AI-built forts
   spawnBots(3); // local fallback bots; replaced by server players/bots once connected
   nudgeOutOfWalls(); // never spawn stuck inside a wall
@@ -1438,7 +1439,7 @@ function openStorage(){
     <div class="seg"><button class="act">ฝากของ →</button></div>
     <div style="font-size:10px;opacity:.7;margin:2px 0 5px">กระเป๋า (แตะเพื่อฝาก)</div>
     <div class="grid" id="st-inv"></div>
-    <div style="font-size:10px;opacity:.7;margin:12px 0 5px">ในกล่อง (แตะเพื่อถอน)</div>
+    <div style="font-size:10px;opacity:.7;margin:12px 0 5px">ในกล่อง (แตะถอน 1 · กดค้างเพื่อระบุจำนวน)</div>
     <div class="grid" id="st-box"></div>`;
   const gi=$("st-inv");
   if(!G.inv.length)gi.innerHTML='<div class="empty-note" style="grid-column:1/-1">กระเป๋าว่าง</div>';
@@ -1449,11 +1450,26 @@ function openStorage(){
   if(!list.length)gb.innerHTML='<div class="empty-note" style="grid-column:1/-1">กล่องว่าง</div>';
   list.forEach(([id,n])=>{const d=ITEMS[id];const c=document.createElement("div");c.className="cell";
     c.innerHTML=`<div class="ic">${d.ic}</div><div>${d.nm}</div><div class="ct">${n}</div>`;
-    c.onclick=()=>{withdraw(id);openStorage();};gb.appendChild(c);});
+    bindHold(c, ()=>{withdraw(id,1);openStorage();}, ()=>{withdrawAsk(id);}); gb.appendChild(c);});
   $("panel").classList.add("on");
 }
 function deposit(id,n){const moved=invRemove(id,n);G.storage[id]=(G.storage[id]||0)+moved;G.banked+=(ITEMS[id].val||0)*moved;save();}
-function withdraw(id){if(!G.storage[id])return;const added=invAdd(id,1);if(added){G.storage[id]-=added;if(G.storage[id]<=0)delete G.storage[id];save();}else toast("กระเป๋าเต็ม");}
+function withdraw(id,n=1){if(!G.storage[id])return;const take=Math.min(n,G.storage[id]);const added=invAdd(id,take);if(added>0){G.storage[id]-=added;if(G.storage[id]<=0)delete G.storage[id];save();}else toast("กระเป๋าเต็ม");}
+// ask how many to withdraw (used by long-press on a box item)
+function withdrawAsk(id){const max=G.storage[id]||0;if(!max)return;const v=prompt("ถอนกี่ชิ้น? (มี "+max+")",String(max));if(v==null)return;const n=Math.max(0,Math.min(max,parseInt(v,10)||0));if(n>0){withdraw(id,n);openStorage();}}
+// tap = quick action, press-and-hold (~450ms) = alternate action (works on touch + mouse)
+function bindHold(el,onTap,onHold){
+  let t=null,held=false;
+  const clear=()=>{if(t){clearTimeout(t);t=null;}};
+  const start=()=>{held=false;clear();t=setTimeout(()=>{held=true;t=null;onHold();},450);};
+  const end=()=>{const wasTimer=!!t;clear();if(!held&&wasTimer)onTap();};
+  el.addEventListener("touchstart",e=>{e.preventDefault();start();},{passive:false});
+  el.addEventListener("touchend",e=>{e.preventDefault();end();},{passive:false});
+  el.addEventListener("touchcancel",()=>{held=false;clear();});
+  el.addEventListener("mousedown",start);
+  el.addEventListener("mouseup",end);
+  el.addEventListener("mouseleave",()=>{held=false;clear();});
+}
 
 /* ---------- panels: inventory / equipment / craft / build ---------- */
 const $=id=>document.getElementById(id);
