@@ -219,49 +219,21 @@ export class GameRoom {
     }
   }
 
+  // Filler bots just wander now — they no longer contest the beacon, so real
+  // players can grab/plant/defend it without bots snatching it.
   botTick(dt) {
-    const b = this.beacon;
     for (const bot of this.bots) {
-      let gx = null, gy = null, speed = 58;
-      if (b.state === "carried" && b.owner === bot.id) {
-        bot.carryT += dt; b.x = bot.x; b.y = bot.y;
-        const home = bot.home || { x: bot.x, y: bot.y };
-        if (dist2(bot.x, bot.y, home.x, home.y) < 36 * 36 || bot.carryT > 13) {
-          handleBeaconAction(b, { id: bot.id, x: bot.x, y: bot.y }, "plant");
-        } else { gx = home.x; gy = home.y; speed = 66; }
-      } else if (b.state === "planted" && b.owner === bot.id) {
-        gx = b.x + Math.sin(Date.now() / 600) * 30;
-        gy = b.y + Math.cos(Date.now() / 700) * 30; speed = 52;
-      } else if (b.state === "planted" && b.owner !== bot.id) {
-        gx = b.x; gy = b.y; speed = 70;
-        if (dist2(bot.x, bot.y, b.x, b.y) < 26 * 26) damageBeacon(b, 7 * dt);
-      } else if (b.state === "crate") {
-        gx = b.x; gy = b.y; speed = 78;
-        if (dist2(bot.x, bot.y, b.x, b.y) < 28 * 28) {
-          b.state = "carried"; b.owner = bot.id; bot.carryT = 0;
-          bot.home = {
-            x: clamp(b.x + rand(-140, 140), 260, WORLD.W - 260),
-            y: clamp(b.y + rand(-140, 140), 260, WORLD.H - 260),
-          };
-        }
-      } else if (b.state === "incoming") {
-        gx = b.x; gy = b.y; speed = 64;
-      } else { // roam
-        bot.t -= dt;
-        if (bot.t <= 0) {
-          bot.t = rand(2, 5);
-          bot.tx = clamp(bot.x + rand(-220, 220), 100, WORLD.W - 100);
-          bot.ty = clamp(bot.y + rand(-220, 220), 100, WORLD.H - 100);
-        }
-        gx = bot.tx; gy = bot.ty; speed = 50;
+      bot.t -= dt;
+      if (bot.t <= 0) {
+        bot.t = rand(2, 5);
+        bot.tx = clamp(bot.x + rand(-220, 220), 100, WORLD.W - 100);
+        bot.ty = clamp(bot.y + rand(-220, 220), 100, WORLD.H - 100);
       }
-      if (gx != null) {
-        const dx = gx - bot.x, dy = gy - bot.y, d = Math.hypot(dx, dy) || 1;
-        if (d > 4) {
-          bot.x += (dx / d) * speed * dt;
-          bot.y += (dy / d) * speed * dt;
-          bot.dir = dx > 2 ? 1 : dx < -2 ? -1 : bot.dir;
-        }
+      const dx = bot.tx - bot.x, dy = bot.ty - bot.y, d = Math.hypot(dx, dy) || 1;
+      if (d > 4) {
+        bot.x += (dx / d) * 50 * dt;
+        bot.y += (dy / d) * 50 * dt;
+        bot.dir = dx > 2 ? 1 : dx < -2 ? -1 : bot.dir;
       }
     }
   }

@@ -981,7 +981,7 @@ function beaconAction(){
   const mine=online?(b.owner===NET.id):(b.owner==="player");
   if(b.state==="crate"){
     if(online){netSend({t:"beacon",action:"grab",x:p.x,y:p.y});}
-    else if(dist2(b.x,b.y,p.x,p.y)<80*80){b.state="carried";b.owner="player";toast("ถือ 📡 — ช้าลง+มอนสเตอร์รุม! ไปปักในป้อม");}
+    else if(dist2(b.x,b.y,p.x,p.y)<100*100){b.state="carried";b.owner="player";toast("ถือ 📡 — ช้าลง+มอนสเตอร์รุม! ไปปักในป้อม");}
     return;
   }
   if(b.state==="carried"&&mine){
@@ -2330,6 +2330,9 @@ const mini=$("mini"),mctx=mini.getContext("2d");
 const MS=120, msx=MS/W, msy=MS/H;
 let hbSig="";
 function drawHotbar(){
+  // drop bindings whose item you no longer have (and isn't the equipped weapon)
+  for(let i=0;i<HOTBAR;i++){const id=G.hotbar[i];
+    if(id&&invCount(id)===0&&!(G.equip.hand&&G.equip.hand.id===id))G.hotbar[i]=null;}
   const sig=G.hotbar.map(id=>id?id+":"+invCount(id)+(G.equip.hand&&G.equip.hand.id===id?"*":""):"_").join("|");
   if(sig===hbSig)return; hbSig=sig;
   let html="";
@@ -2503,7 +2506,7 @@ function updateHUD(){
   // beacon action button (pick up crate / plant / relocate)
   const bb=$("a-beacon");const b=G.beacon;
   const beaconMine=(window.NET&&NET.connected)?(b.owner===NET.id):(b.owner==="player");
-  if(b.state==="crate"&&dist2(b.x,b.y,p.x,p.y)<80*80){bb.style.display="flex";bb.textContent="เก็บ📡";}
+  if(b.state==="crate"&&dist2(b.x,b.y,p.x,p.y)<100*100){bb.style.display="flex";bb.textContent="เก็บ📡";}
   else if(b.state==="carried"&&beaconMine){bb.style.display="flex";bb.textContent="ปัก📡";}
   else if(b.state==="planted"&&beaconMine&&dist2(b.x,b.y,p.x,p.y)<60*60){bb.style.display="flex";bb.textContent="ยก📡";}
   else if(b.state==="planted"&&!beaconMine&&dist2(b.x,b.y,p.x,p.y)<54*54){bb.style.display="flex";bb.textContent="ทุบ📡";}
