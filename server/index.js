@@ -7,15 +7,28 @@ import { GameRoom } from "./room.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Never let one bad message / edge case take the whole process down (which on a
+// host like Render would show up as periodic "no-server" restarts). Log and live.
+process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
+process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e));
+
 const app = express();
-app.use(express.static(path.join(__dirname, "..", "public")));
+const PUBLIC = path.join(__dirname, "..", "public");
 app.get("/healthz", (_req, res) => res.type("text").send("ok"));
+app.use(express.static(PUBLIC));
+// Belt-and-suspenders: always answer "/" with the game even if static index
+// resolution is disabled for any reason.
+app.get("/", (_req, res) => res.sendFile(path.join(PUBLIC, "index.html")));
 
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: "/ws" });
 
 const room = new GameRoom();
-wss.on("connection", (ws) => room.onConnect(ws));
+wss.on("connection", (ws) => {
+  try { room.onConnect(ws); }
+  catch (e) { console.error("onConnect failed:", e); try { ws.terminate(); } catch { /* ignore */ } }
+});
+wss.on("error", (e) => console.error("wss error:", e));
 
 // Heartbeat: drop sockets that stop responding so dead carriers release the beacon.
 const heartbeat = setInterval(() => {

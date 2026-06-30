@@ -45,6 +45,11 @@ export class GameRoom {
   }
 
   onMessage(ws, buf) {
+    try { this._onMessage(ws, buf); }
+    catch (e) { console.error("onMessage failed:", e); }
+  }
+
+  _onMessage(ws, buf) {
     const m = decode(buf);
     if (!m || typeof m.t !== "string") return;
 
@@ -216,6 +221,11 @@ export class GameRoom {
   }
 
   update() {
+    try { this._update(); }
+    catch (e) { console.error("tick update failed:", e); }
+  }
+
+  _update() {
     const nowMs = Date.now();
     const dt = Math.min(0.25, (nowMs - this.lastTick) / 1000) || 0;
     this.lastTick = nowMs;
