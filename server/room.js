@@ -18,13 +18,12 @@ const ri = (a, b) => Math.floor(rand(a, b + 1));
 
 // Minimal monster stats (positions/HP/AI are authoritative here; the client
 // renders kind-specific visuals). Server AI is simplified to chase + siege.
-// zone = the biome risk a monster belongs to; w = spawn weight (low-level heavy)
+// Thai wildlife. zone = the biome risk it belongs to; w = spawn weight.
 const MOBS = {
-  wolf: { hp: 18, sp: 96, dmg: 7, r: 13, zone: 1, w: 0.5 },
-  boar: { hp: 40, sp: 70, dmg: 15, r: 16, zone: 1, w: 0.3 },
-  bat: { hp: 9, sp: 130, dmg: 4, r: 9, zone: 1, w: 0.12 },
-  bear: { hp: 85, sp: 74, dmg: 22, r: 19, zone: 2, w: 0.1 },
-  scorpion: { hp: 32, sp: 104, dmg: 12, r: 14, zone: 3, w: 0.08 },
+  deer:     { hp: 16,  sp: 122, dmg: 5,  r: 14, zone: 1, w: 0.5 },
+  buffalo:  { hp: 55,  sp: 66,  dmg: 16, r: 18, zone: 1, w: 0.28 },
+  tiger:    { hp: 46,  sp: 110, dmg: 21, r: 15, zone: 2, w: 0.14 },
+  elephant: { hp: 165, sp: 60,  dmg: 28, r: 24, zone: 2, w: 0.08 },
 };
 // pick a monster kind that belongs in a biome of the given risk level
 function pickKindForRisk(risk) {

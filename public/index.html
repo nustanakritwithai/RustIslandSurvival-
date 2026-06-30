@@ -269,7 +269,7 @@ const ITEMS = {
   iron_ore:    {nm:"แร่เหล็ก",  ic:"⛏️", w:1.5, val:5,  stack:30},
   copper_ore:  {nm:"แร่ทองแดง", ic:"🟤", w:1.4, val:4,  stack:30},
   plant_fiber: {nm:"เส้นใย",    ic:"🌾", w:0.1, val:1,  stack:50},
-  berries:     {nm:"เบอร์รี่",  ic:"🫐", w:0.1, val:1,  stack:30, food:18},
+  berries:     {nm:"กล้วย",     ic:"🍌", w:0.1, val:1,  stack:30, food:18},
   raw_meat:    {nm:"เนื้อดิบ",  ic:"🥩", w:0.3, val:2,  stack:20},
   cooked_meat: {nm:"เนื้อย่าง", ic:"🍖", w:0.3, val:3,  stack:20, food:38},
   animal_hide: {nm:"หนังสัตว์", ic:"🟫", w:0.5, val:3,  stack:20},
@@ -306,20 +306,20 @@ const ITEMS = {
   rifle:       {nm:"ปืนไรเฟิล", ic:"🔫", w:2.8, val:45, stack:1, slot:"hand", gun:true, ranged:true, ammo:"bullet", weapon:34, range:520, speed:820, cd:0.5, mag:20, reload:1.9, dur:130},
   sniper:      {nm:"ปืนสไนเปอร์",ic:"🎯",w:3.2, val:60, stack:1, slot:"hand", gun:true, ranged:true, ammo:"bullet", weapon:75, range:680, speed:1100,cd:1.3, mag:5, reload:2.1, dur:90},
   arrow:       {nm:"ลูกธนู",    ic:"🪶", w:0.05,val:1,  stack:40},
-  berry_jam:   {nm:"แยมเบอร์รี่",ic:"🍯",w:0.2, val:3,  stack:20, food:42},
+  berry_jam:   {nm:"กล้วยกวน",  ic:"🍌", w:0.2, val:3,  stack:20, food:42},
   glass_sand:  {nm:"ทรายแก้ว",  ic:"⏳", w:0.5, val:3,  stack:40},
   glass:       {nm:"แก้ว",      ic:"🔷", w:0.4, val:6,  stack:20},
   obsidian:    {nm:"ออบซิเดียน", ic:"⬛", w:0.8, val:11, stack:20},
   obsidian_spear:{nm:"หอกออบซิเดียน",ic:"🗡️",w:2.4,val:40,stack:1, slot:"hand", weapon:40, dur:120},
-  herb:        {nm:"สมุนไพร",   ic:"🌱", w:0.1, val:2,  stack:40},
-  medicine:    {nm:"ยาสมุนไพร", ic:"💊", w:0.2, val:9,  stack:10, heal:45},
-  bandage:     {nm:"ผ้าพันแผล", ic:"🩹", w:0.1, val:4,  stack:10, heal:20},
-  tonic:       {nm:"ยาชูกำลัง", ic:"🧪", w:0.2, val:8,  stack:10, heal:15, stam:60, cure:["sick"]},
-  antidote:    {nm:"ยาแก้พิษ",  ic:"🧴", w:0.2, val:7,  stack:10, cure:["poison","bleed"]},
-  elixir_swift:{nm:"ยาเร่งฝีเท้า",ic:"🟢",w:0.2, val:12, stack:10, buff:"swift", bdur:30},
-  elixir_power:{nm:"ยาพละกำลัง", ic:"🔴",w:0.2, val:12, stack:10, buff:"power", bdur:30},
-  elixir_guard:{nm:"ยาเกราะกาย", ic:"🔵",w:0.2, val:12, stack:10, buff:"guard", bdur:30},
-  elixir_regen:{nm:"ยาฟื้นกาย",  ic:"🟣",w:0.2, val:12, stack:10, buff:"regen", bdur:25},
+  herb:        {nm:"สมุนไพรไทย", ic:"🌿", w:0.1, val:2,  stack:40},
+  medicine:    {nm:"ลูกประคบสมุนไพร", ic:"🌿", w:0.2, val:9,  stack:10, heal:45},
+  bandage:     {nm:"ยาพอกเขียว", ic:"🍃", w:0.1, val:4,  stack:10, heal:20},
+  tonic:       {nm:"ยาดองสมุนไพร", ic:"🍶", w:0.2, val:8,  stack:10, heal:15, stam:60, cure:["sick"]},
+  antidote:    {nm:"ฟ้าทะลายโจร", ic:"🌿", w:0.2, val:7,  stack:10, cure:["poison","bleed"]},
+  elixir_swift:{nm:"ยาขิงข่า",   ic:"🟢",w:0.2, val:12, stack:10, buff:"swift", bdur:30},
+  elixir_power:{nm:"ยากระชายดำ", ic:"🔴",w:0.2, val:12, stack:10, buff:"power", bdur:30},
+  elixir_guard:{nm:"ยาหอมเทพจิตร", ic:"🔵",w:0.2, val:12, stack:10, buff:"guard", bdur:30},
+  elixir_regen:{nm:"ยารางจืด",   ic:"🟣",w:0.2, val:12, stack:10, buff:"regen", bdur:25},
   territory_core:{nm:"เสาเขตแดน",ic:"🚩",w:3,  val:20, stack:1, place:"core"},
   storage_box: {nm:"กล่องเก็บของ",ic:"📦",w:3, val:12, stack:1, place:"box"},
   crafting_table:{nm:"โต๊ะคราฟต์",ic:"🛠️",w:5, val:14, stack:1, place:"table"},
@@ -788,16 +788,14 @@ function roundDark(){
 
 /* ---------- monsters ---------- */
 const MOB_TYPES = {
-  wolf:    {nm:"หมาป่า", hp:30,  sp:86,  dmg:7,  detect:300, ai:"chase",  r:13, col:"#777",    colChase:"#6b6b6b", meat:[1,2], hide:0.6, zone:1, weight:1.0, inflict:"bleed"},
-  boar:    {nm:"หมูป่า", hp:75,  sp:58,  dmg:17, detect:280, ai:"charge", r:16, col:"#5b4a3a", colChase:"#6e5640", meat:[2,4], hide:0.8, zone:1, weight:0.5, inflict:"bleed"},
-  bat:     {nm:"ค้างคาว",hp:14,  sp:122, dmg:4,  detect:430, ai:"fly",    r:9,  col:"#3a2e3e", colChase:"#4a3a52", meat:[0,1], hide:0,   zone:1, weight:0.7, night:true},
-  spitter: {nm:"ตัวคายพิษ",hp:34,sp:52,  dmg:0,  detect:380, ai:"ranged", r:13, col:"#4a6b3a", colChase:"#5a7d44", meat:[1,2], hide:0.3, zone:2, weight:0.55, range:220, spit:12},
-  bear:    {nm:"หมียักษ์",hp:150, sp:64,  dmg:25, detect:300, ai:"chase",  r:19, col:"#4a3526", colChase:"#5b4330", meat:[3,5], hide:1.0, zone:2, weight:0.3, boss:true, inflict:"bleed"},
-  scorpion:{nm:"แมงป่องพิษ",hp:60,sp:96, dmg:13, detect:330, ai:"charge", r:14, col:"#5a3a2e", colChase:"#6e4636", meat:[1,2], hide:0.5, zone:3, weight:0.8, inflict:"poison"},
+  deer:     {nm:"กวาง",     hp:16, sp:122, dmg:5,  detect:300, ai:"chase",  r:14, col:"#b07a44", colChase:"#c08a50", meat:[2,3], hide:0.8, zone:1, weight:0.5},
+  buffalo:  {nm:"ควายป่า",  hp:55, sp:66,  dmg:16, detect:280, ai:"charge", r:18, col:"#4a4a52", colChase:"#5a5a64", meat:[3,5], hide:0.9, zone:1, weight:0.28, inflict:"bleed"},
+  tiger:    {nm:"เสือโคร่ง", hp:46, sp:110, dmg:21, detect:360, ai:"chase",  r:15, col:"#d98a3a", colChase:"#e89a44", meat:[1,2], hide:0.7, zone:2, weight:0.14, inflict:"bleed"},
+  elephant: {nm:"ช้างป่า",  hp:165,sp:60,  dmg:28, detect:300, ai:"charge", r:24, col:"#8a8f96", colChase:"#9aa0a8", meat:[4,6], hide:1.0, zone:2, weight:0.08, boss:true},
 };
 function spawnMob(kind,x,y){const m=MOB_TYPES[kind];
   G.wolves.push({kind,x,y,vx:0,vy:0,hp:m.hp,maxhp:m.hp,state:"wander",t:rand(0,3),tx:x,ty:y,hitT:0,dmgT:0,spitT:0,mode:null,modeT:0,cd:rand(1,3),wob:rand(0,6),dvx:0,dvy:0,flank:rand(-0.7,0.7)});}
-function spawnWolf(x,y){spawnMob("wolf",x,y);} // back-compat (extraction lure)
+function spawnWolf(x,y){spawnMob("tiger",x,y);} // back-compat (extraction lure)
 function pickMobKind(zoneRisk,night,esc){
   const pool=[];
   for(const k in MOB_TYPES){const m=MOB_TYPES[k];
@@ -806,7 +804,7 @@ function pickMobKind(zoneRisk,night,esc){
     let wgt=m.weight; if(m.boss)wgt*=(esc>0.6?0.6:0.12);
     pool.push([k,wgt]);}
   let tot=0;for(const[,w]of pool)tot+=w;let r=Math.random()*tot;
-  for(const[k,w]of pool){r-=w;if(r<=0)return k;}return "wolf";
+  for(const[k,w]of pool){r-=w;if(r<=0)return k;}return "deer";
 }
 function mobWander(w,dt){w.t-=dt;if(w.t<=0){w.t=rand(2,5);w.tx=clamp(w.x+rand(-180,180),60,W-60);w.ty=clamp(w.y+rand(-180,180),60,H-60);}
   const dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy)||1;return{sx:dx/d,sy:dy/d,sp:30};}
@@ -844,7 +842,7 @@ function wolfTick(dt){
   }
   const tgt=aggroPoint();
   for(let i=G.wolves.length-1;i>=0;i--){
-    const w=G.wolves[i];const m=MOB_TYPES[w.kind]||MOB_TYPES.wolf;
+    const w=G.wolves[i];const m=MOB_TYPES[w.kind]||MOB_TYPES.deer;
     w.hitT=Math.max(0,w.hitT-dt);w.dmgT=Math.max(0,w.dmgT-dt);w.spitT=Math.max(0,w.spitT-dt);w.cd=Math.max(0,w.cd-dt);
     const dtx=dist2(w.x,w.y,tgt.x,tgt.y), dpx=dist2(w.x,w.y,p.x,p.y);
     const detect=m.detect*(night?1.3:1);
@@ -882,7 +880,7 @@ function wolfTick(dt){
       G.stats.kills++;
       const drop=[];const mt=ri(m.meat[0],m.meat[1]);if(mt>0)drop.push({id:"raw_meat",n:mt});
       if(Math.random()<m.hide)drop.push({id:"animal_hide",n:1});
-      if(w.kind==="bear"&&Math.random()<0.5)drop.push({id:"iron_ore",n:ri(1,2)});
+      if(w.kind==="elephant"&&Math.random()<0.5)drop.push({id:"iron_ore",n:ri(1,2)});
       if(drop.length)G.loot.push({x:w.x,y:w.y,items:drop,t:60,wolf:true});
       G.wolves.splice(i,1);
     }
@@ -898,7 +896,7 @@ function netWolfTick(dt){
     if(w.tx!=null){w.x+=(w.tx-w.x)*k;w.y+=(w.ty-w.y)*k;}
     w.hitT=Math.max(0,w.hitT-dt);w.dmgT=Math.max(0,w.dmgT-dt);
     if(!w.aggro)continue; // passive monsters never attack first
-    const m=MOB_TYPES[w.kind]||MOB_TYPES.wolf;
+    const m=MOB_TYPES[w.kind]||MOB_TYPES.deer;
     if(w.hitT<=0&&!G.dead&&dist2(w.x,w.y,p.x,p.y)<(m.r+15)*(m.r+15)){
       damagePlayer(m.dmg,w.x,w.y);w.hitT=1.1;
       if(m.inflict&&Math.random()<0.3){p.status=p.status||{};p.status[m.inflict]=Math.max(p.status[m.inflict]||0,5);
@@ -2355,10 +2353,23 @@ const DECO={
 function rnode(n,x,y){
   const t=NODE_TYPES[n.type];
   if(n.type!=="water"){ctx.fillStyle="rgba(0,0,0,.14)";ctx.beginPath();ctx.ellipse(x,y+(n.type==="tree"?13:n.r*0.6),n.r*0.85,Math.max(3,n.r*0.32),0,0,7);ctx.fill();}
-  if(n.type==="tree"){ctx.fillStyle=t.trunk;ctx.fillRect(x-3,y,6,14);ctx.fillStyle=t.color;ctx.beginPath();ctx.arc(x,y-4,n.r,0,7);ctx.fill();ctx.fillStyle="rgba(255,255,255,.08)";ctx.beginPath();ctx.arc(x-4,y-8,n.r*0.5,0,7);ctx.fill();}
+  if(n.type==="tree"){ // teak (ต้นสัก) — tall straight hardwood, layered canopy
+    ctx.fillStyle=t.trunk;ctx.fillRect(x-3,y-2,6,16);
+    ctx.fillStyle=t.color;ctx.beginPath();ctx.arc(x,y-6,n.r,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(x-n.r*0.5,y-2,n.r*0.6,0,7);ctx.arc(x+n.r*0.5,y-2,n.r*0.6,0,7);ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,.10)";ctx.beginPath();ctx.arc(x-4,y-10,n.r*0.45,0,7);ctx.fill();}
   else if(n.type==="water"){ctx.fillStyle=t.color;ctx.beginPath();ctx.ellipse(x,y,n.r,n.r*0.7,0,0,7);ctx.fill();ctx.fillStyle="rgba(255,255,255,.18)";ctx.beginPath();ctx.ellipse(x-4,y-3,n.r*0.4,n.r*0.25,0,0,7);ctx.fill();}
-  else if(n.type==="bush"){ctx.fillStyle=t.color;ctx.beginPath();ctx.arc(x,y,n.r,0,7);ctx.fill();ctx.fillStyle="#c0392b";for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(x-5+i*5,y-2,2,0,7);ctx.fill();}}
-  else{ // rock / iron / copper
+  else if(n.type==="bush"){ // banana plant (ต้นกล้วย)
+    ctx.fillStyle="#6b7d3a";ctx.fillRect(x-2,y-2,4,10);
+    ctx.fillStyle=t.color;
+    for(const a of [-1.1,-0.4,0.4,1.1,Math.PI]){ctx.save();ctx.translate(x,y-6);ctx.rotate(a);ctx.beginPath();ctx.ellipse(0,-n.r*0.7,n.r*0.34,n.r*0.95,0,0,7);ctx.fill();ctx.restore();}
+    ctx.fillStyle="#e8c44a";for(let i=0;i<3;i++){ctx.beginPath();ctx.ellipse(x+2+i*2,y+2,1.6,4,-0.5,0,7);ctx.fill();}}
+  else if(n.type==="herb"||n.type==="reed"){ // Thai herb / krathin (กระถิน) clumps
+    ctx.strokeStyle=t.color;ctx.lineWidth=2;ctx.lineCap="round";
+    for(let i=-2;i<=2;i++){ctx.beginPath();ctx.moveTo(x,y+3);ctx.quadraticCurveTo(x+i*3,y-n.r*0.6,x+i*5,y-n.r*1.1);ctx.stroke();}
+    if(n.type==="herb"){ctx.fillStyle="#e58fb0";ctx.beginPath();ctx.arc(x,y-n.r*0.8,2,0,7);ctx.fill();}
+    ctx.lineCap="butt";}
+  else{ // rock / iron / copper / sand
     ctx.fillStyle=t.color;ctx.beginPath();
     ctx.moveTo(x-n.r,y+n.r*0.5);ctx.lineTo(x-n.r*0.5,y-n.r*0.6);ctx.lineTo(x+n.r*0.4,y-n.r*0.7);ctx.lineTo(x+n.r,y+n.r*0.4);ctx.lineTo(x+n.r*0.5,y+n.r*0.8);ctx.closePath();ctx.fill();
     if(t.spec){ctx.fillStyle=t.spec;for(let i=0;i<4;i++){ctx.beginPath();ctx.arc(x-6+i*4,y-4+(i%2)*6,2,0,7);ctx.fill();}}
@@ -2412,39 +2423,45 @@ function rloot(l,x,y){
   ctx.fillStyle="#1d1a14";ctx.font="11px sans-serif";ctx.textAlign="center";ctx.fillText(l.corpse?"💀":"🎒",x,y+4);ctx.textAlign="left";
 }
 function rwolf(w,x,y){
-  const m=MOB_TYPES[w.kind]||MOB_TYPES.wolf;
+  const m=MOB_TYPES[w.kind]||MOB_TYPES.deer;
   const fx=(w.x>G.player.x?-1:1); // face player-ish (+1 => facing right)
   const hurt=w.dmgT>0;
   const body=hurt?"#ffb3a7":(w.state==="chase"?m.colChase:m.col);
   ctx.save();ctx.translate(x,y);
   // shadow
   ctx.fillStyle="rgba(0,0,0,.2)";ctx.beginPath();ctx.ellipse(0,m.r*0.7,m.r*0.95,m.r*0.35,0,0,7);ctx.fill();
-  if(w.kind==="bat"){
-    const flap=Math.sin((w.wob||0)*2)*5;
-    ctx.fillStyle=body;
-    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(-13,-6-flap);ctx.lineTo(-6,2);ctx.closePath();ctx.fill(); // L wing
-    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(13,-6-flap);ctx.lineTo(6,2);ctx.closePath();ctx.fill();  // R wing
-    ctx.beginPath();ctx.ellipse(0,0,5,6,0,0,7);ctx.fill();
-    ctx.fillStyle="#e0962e";ctx.beginPath();ctx.arc(-2,-1,1,0,7);ctx.arc(2,-1,1,0,7);ctx.fill();
-  }else if(w.kind==="boar"){
+  if(w.kind==="deer"){
+    ctx.strokeStyle="#7a5230";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-6,4);ctx.lineTo(-6,11);ctx.moveTo(6,4);ctx.lineTo(6,11);ctx.stroke();
+    ctx.fillStyle=body;ctx.beginPath();ctx.ellipse(0,0,m.r,m.r*0.6,0,0,7);ctx.fill();
+    ctx.beginPath();ctx.ellipse(m.r*0.7*fx,-6,4,6,0,0,7);ctx.fill(); // neck
+    ctx.beginPath();ctx.arc(m.r*0.95*fx,-11,4,0,7);ctx.fill(); // head
+    ctx.strokeStyle="#caa46a";ctx.lineWidth=1.4;ctx.beginPath();
+    ctx.moveTo(m.r*0.95*fx,-14);ctx.lineTo(m.r*0.78*fx,-22);ctx.moveTo(m.r*0.95*fx,-14);ctx.lineTo(m.r*1.15*fx,-21);ctx.stroke(); // antlers
+    ctx.fillStyle="rgba(255,255,255,.55)";ctx.beginPath();ctx.arc(-3,-2,1.4,0,7);ctx.arc(3,2,1.4,0,7);ctx.fill();
+    ctx.fillStyle="#e8dcc6";ctx.beginPath();ctx.arc(-m.r*0.95*fx,-2,2,0,7);ctx.fill(); // tail
+  }else if(w.kind==="buffalo"){
     if(w.mode==="telegraph"){ctx.strokeStyle="#c4452f";ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,m.r+5+Math.sin(now()/40)*2,0,7);ctx.stroke();}
-    ctx.fillStyle=body;ctx.beginPath();ctx.ellipse(0,0,m.r,m.r*0.72,0,0,7);ctx.fill();
-    ctx.beginPath();ctx.arc(m.r*0.8*fx,-1,6,0,7);ctx.fill(); // head
-    ctx.fillStyle="#e9e2d0";ctx.beginPath();ctx.moveTo(m.r*1.1*fx,2);ctx.lineTo(m.r*1.4*fx,-2);ctx.lineTo(m.r*1.05*fx,-1);ctx.closePath();ctx.fill(); // tusk
-    ctx.fillStyle="#2a1f16";ctx.beginPath();ctx.arc(m.r*0.9*fx,-3,1.3,0,7);ctx.fill();
-  }else if(w.kind==="spitter"){
-    ctx.fillStyle=body;ctx.beginPath();ctx.ellipse(0,0,m.r,m.r*0.8,0,0,7);ctx.fill();
-    ctx.fillStyle="#2f4a26";const sp=[[-5,-3],[4,-4],[-3,4],[5,3]];for(const o of sp){ctx.beginPath();ctx.arc(o[0],o[1],1.6,0,7);ctx.fill();}
-    ctx.fillStyle=w.spitT>0?"#cfe88a":"#1f3014";ctx.beginPath();ctx.arc(m.r*0.8*fx,0,w.spitT>0?3.5:2,0,7);ctx.fill(); // mouth
-  }else if(w.kind==="bear"){
-    ctx.fillStyle=body;ctx.beginPath();ctx.ellipse(0,0,m.r,m.r*0.8,0,0,7);ctx.fill();
-    ctx.beginPath();ctx.arc(m.r*0.85*fx,-2,8,0,7);ctx.fill(); // head
-    ctx.beginPath();ctx.arc(m.r*0.6*fx,-m.r*0.7,3.5,0,7);ctx.arc(m.r*1.05*fx,-m.r*0.7,3.5,0,7);ctx.fill(); // ears
-    ctx.fillStyle="#1a120c";ctx.beginPath();ctx.arc(m.r*0.95*fx,-3,1.6,0,7);ctx.fill();
-  }else{ // wolf
-    ctx.fillStyle=body;ctx.beginPath();ctx.ellipse(0,0,13,9,0,0,7);ctx.fill();
-    ctx.beginPath();ctx.arc(10*fx,-2,5,0,7);ctx.fill();
-    ctx.fillStyle="#c4452f";ctx.fillRect(10*fx-1,-4,2,2);
+    ctx.fillStyle=body;ctx.beginPath();ctx.ellipse(0,0,m.r,m.r*0.74,0,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(m.r*0.85*fx,0,7,0,7);ctx.fill(); // head
+    ctx.strokeStyle="#d4c8ac";ctx.lineWidth=2.6;ctx.lineCap="round"; // sweeping horns
+    ctx.beginPath();ctx.arc(m.r*0.85*fx,-5,8,Math.PI*0.15,Math.PI*0.85);ctx.stroke();ctx.lineCap="butt";
+    ctx.fillStyle="#15100c";ctx.beginPath();ctx.arc(m.r*1.05*fx,0,1.6,0,7);ctx.fill();
+  }else if(w.kind==="tiger"){
+    ctx.fillStyle=body;ctx.beginPath();ctx.ellipse(0,0,m.r,m.r*0.64,0,0,7);ctx.fill();
+    ctx.strokeStyle="rgba(30,18,8,.8)";ctx.lineWidth=1.6;
+    for(let i=-1;i<=2;i++){ctx.beginPath();ctx.moveTo(i*5,-m.r*0.5);ctx.lineTo(i*5,m.r*0.5);ctx.stroke();}
+    ctx.fillStyle=body;ctx.beginPath();ctx.arc(m.r*0.9*fx,-2,5.5,0,7);ctx.fill(); // head
+    ctx.beginPath();ctx.arc(m.r*0.72*fx,-m.r*0.55,2.4,0,7);ctx.arc(m.r*1.08*fx,-m.r*0.55,2.4,0,7);ctx.fill(); // ears
+    ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(m.r*0.95*fx,1,2.4,0,7);ctx.fill(); // muzzle
+    ctx.fillStyle="#15100c";ctx.beginPath();ctx.arc(m.r*1.0*fx,-3,1.4,0,7);ctx.fill();
+  }else{ // elephant
+    ctx.fillStyle=body;ctx.beginPath();ctx.ellipse(0,0,m.r,m.r*0.78,0,0,7);ctx.fill();
+    ctx.beginPath();ctx.ellipse(m.r*0.45*fx,-2,7,9,0,0,7);ctx.fill(); // ear
+    ctx.beginPath();ctx.arc(m.r*0.95*fx,0,8,0,7);ctx.fill(); // head
+    ctx.strokeStyle=body;ctx.lineWidth=5;ctx.lineCap="round"; // trunk
+    ctx.beginPath();ctx.moveTo(m.r*1.1*fx,2);ctx.quadraticCurveTo(m.r*1.5*fx,7,m.r*1.4*fx,14);ctx.stroke();ctx.lineCap="butt";
+    ctx.strokeStyle="#efe6cf";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(m.r*1.05*fx,5);ctx.lineTo(m.r*1.3*fx,11);ctx.stroke(); // tusk
+    ctx.fillStyle="#15100c";ctx.beginPath();ctx.arc(m.r*1.0*fx,-3,1.6,0,7);ctx.fill();
   }
   ctx.restore();
   if(w.hp<w.maxhp){const bw=Math.max(24,m.r*2);ctx.fillStyle="rgba(0,0,0,.5)";ctx.fillRect(x-bw/2,y-m.r-8,bw,3);
@@ -2676,8 +2693,8 @@ function drawMini(){
   // corpse / loot
   for(const l of G.loot){mctx.fillStyle=l.corpse?"#c4452f":"#e0c46a";mctx.fillRect(l.x*msx-1.5,l.y*msy-1.5,3,3);}
   // monsters (bears/boss redder & bigger)
-  for(const w of G.wolves){const m=MOB_TYPES[w.kind]||MOB_TYPES.wolf;
-    mctx.fillStyle=m.boss?"rgba(196,69,47,.95)":w.kind==="spitter"?"rgba(120,180,70,.85)":"rgba(40,40,40,.8)";
+  for(const w of G.wolves){const m=MOB_TYPES[w.kind]||MOB_TYPES.deer;
+    mctx.fillStyle=m.boss?"rgba(196,69,47,.95)":w.kind==="tiger"?"rgba(217,138,58,.9)":"rgba(60,50,40,.85)";
     const s=m.boss?2:1;mctx.fillRect(w.x*msx-s,w.y*msy-s,s*2,s*2);}
   // wild horses
   mctx.fillStyle="rgba(150,110,70,.9)";for(const h of G.horses){mctx.fillRect(h.x*msx-1,h.y*msy-1,2,2);}
