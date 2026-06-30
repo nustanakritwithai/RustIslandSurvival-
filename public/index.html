@@ -573,7 +573,7 @@ const G = {
   bots:[],           // AI survivors competing for the beacon
   playerName:"",
 };
-const SLOT_MS = 600000; // server round = real-time 10-minute slot
+const SLOT_MS = 1800000; // server round = real-time 30-minute slot
 function slotInfo(){const ms=Date.now();const start=Math.floor(ms/SLOT_MS)*SLOT_MS;return{start,end:start+SLOT_MS,remain:(start+SLOT_MS-ms)/1000,id:start};}
 function fmtClock(sec){const s=Math.max(0,Math.ceil(sec));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
 const INV_SLOTS = 20, SAFE_SLOTS = 2, HOTBAR = 4;
@@ -581,7 +581,7 @@ const INV_SLOTS = 20, SAFE_SLOTS = 2, HOTBAR = 4;
 const CFG = {
   roundDur:480, wolfRate:1, wolfSpeed:1, hungerRate:1, thirstRate:1,
   carryMax:40, durLoss:1, chargeMult:1, valueMult:1, spawnRate:1,
-  dropEquipOnDeath:1, captureWindow:150,
+  dropEquipOnDeath:1, captureWindow:360,
 };
 
 /* ---------- effective stats from gear ---------- */
@@ -977,19 +977,29 @@ function aggroPoint(){ // monsters converge on the beacon's holder/site, else th
 }
 function beaconAction(){
   const b=G.beacon,p=G.player;
-  if(window.NET&&NET.connected){ // ask the server; it decides who wins the race
-    if(b.state==="crate")netSend({t:"beacon",action:"grab",x:p.x,y:p.y});
-    else if(b.state==="carried"&&b.owner===NET.id)netSend({t:"beacon",action:"plant",x:p.x,y:p.y});
-    else if(b.state==="planted"&&b.owner===NET.id)netSend({t:"beacon",action:"lift",x:p.x,y:p.y});
+  const online=window.NET&&NET.connected;
+  const mine=online?(b.owner===NET.id):(b.owner==="player");
+  if(b.state==="crate"){
+    if(online){netSend({t:"beacon",action:"grab",x:p.x,y:p.y});}
+    else if(dist2(b.x,b.y,p.x,p.y)<80*80){b.state="carried";b.owner="player";toast("ถือ 📡 — ช้าลง+มอนสเตอร์รุม! ไปปักในป้อม");}
     return;
   }
-  if(b.state==="crate"){ if(dist2(b.x,b.y,p.x,p.y)<70*70){b.state="carried";b.owner="player";toast("ถือ 📡 — ช้าลง+มอนสเตอร์รุม! ไปปักในป้อม");} return; }
-  if(b.state==="carried"&&b.owner==="player"){
-    if(blockedAt(p.x,p.y)){toast("ตรงนี้ปักไม่ได้");return;}
-    b.state="planted";b.owner="player";b.x=p.x;b.y=p.y;b.maxhp=260;b.hp=260;sfx("beacon");
-    toast("ปัก 📡 แล้ว — ป้องกันไว้จนเครื่องมารับ!");return;
+  if(b.state==="carried"&&mine){
+    if(online){netSend({t:"beacon",action:"plant",x:p.x,y:p.y});}
+    else{ if(blockedAt(p.x,p.y)){toast("ตรงนี้ปักไม่ได้");return;}
+      b.state="planted";b.owner="player";b.x=p.x;b.y=p.y;b.maxhp=260;b.hp=260;sfx("beacon");toast("ปัก 📡 แล้ว — ป้องกันไว้จนเครื่องมารับ!"); }
+    return;
   }
-  if(b.state==="planted"){ if(dist2(b.x,b.y,p.x,p.y)<60*60){b.state="carried";b.owner="player";toast("ยก 📡 ขึ้นมา — หาที่ปักใหม่");} return; }
+  if(b.state==="planted"&&mine){
+    if(dist2(b.x,b.y,p.x,p.y)<60*60){ if(online)netSend({t:"beacon",action:"lift",x:p.x,y:p.y});
+      else{b.state="carried";b.owner="player";toast("ยก 📡 ขึ้นมา — หาที่ปักใหม่");} }
+    return;
+  }
+  if(b.state==="planted"&&!mine&&dist2(b.x,b.y,p.x,p.y)<54*54){ // smash an enemy's planted beacon to knock it loose
+    const dmg=14+(handWeaponDmg()||0);damageBeacon(dmg);p.atkT=0.22;p.stam=clamp(p.stam-3,0,100);sfx("hit");
+    spawnFx(b.x,b.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});
+    return;
+  }
 }
 /* ---------- AI survivors (bots) ---------- */
 function botName(){const a=["นัก","เสือ","เงา","พราน","โร","ฮัน","ไค","ซิน","ดิน","ม่าน"],b=["ล่า","เถื่อน","ดำ","เร็ว","เดี่ยว","ป่า","เพลิง","ฟ้า"];return a[ri(0,a.length-1)]+b[ri(0,b.length-1)];}
@@ -1078,6 +1088,7 @@ function deploy(){
   G.wolves.length=0; G.projectiles.length=0; G.mounted=null; G.beacon={state:"none"}; G._airWarn=false;
   G.buildings=G.buildings.filter(b=>!b.bot); // never keep AI-built forts
   spawnBots(3); // local fallback bots; replaced by server players/bots once connected
+  nudgeOutOfWalls(); // never spawn stuck inside a wall
   if(typeof netOnDeploy==="function")netOnDeploy();
   audioInit();audioResume();musicStart();
 }
@@ -1924,6 +1935,7 @@ function update(dt){
   if(!blockedAt(nx,p.y))p.x=nx;else p.vx=0;
   if(!blockedAt(p.x,ny))p.y=ny;else p.vy=0;
   if(Math.abs(ix)>0.05)p.dir=ix>0?1:-1;
+  if(blockedAt(p.x,p.y))nudgeOutOfWalls(); // freed if a (shared) wall lands on us / respawn clip
   p.atkT=Math.max(0,p.atkT-dt);p.hitT=Math.max(0,p.hitT-dt);p.dmgT=Math.max(0,p.dmgT-dt);p.shootCd=Math.max(0,p.shootCd-dt);p.reloadT=Math.max(0,p.reloadT-dt);
   // walk-cycle animation state
   p.spd=Math.hypot(p.vx,p.vy);
@@ -2473,9 +2485,11 @@ function updateHUD(){
   $("a-act").textContent=G.editMode?(G.editMode==="move"?"ยก":"รื้อ"):G.buildMode?"วาง":(ex2&&G.round.active&&!nearestNode()&&!nearestLoot()&&!nearestStation("box")&&!nearestStation("furnace"))?"สกัด":"เก็บ";
   // beacon action button (pick up crate / plant / relocate)
   const bb=$("a-beacon");const b=G.beacon;
-  if(b.state==="crate"&&dist2(b.x,b.y,p.x,p.y)<70*70){bb.style.display="flex";bb.textContent="เก็บ📡";}
-  else if(b.state==="carried"){bb.style.display="flex";bb.textContent="ปัก📡";}
-  else if(b.state==="planted"&&dist2(b.x,b.y,p.x,p.y)<60*60){bb.style.display="flex";bb.textContent="ยก📡";}
+  const beaconMine=(window.NET&&NET.connected)?(b.owner===NET.id):(b.owner==="player");
+  if(b.state==="crate"&&dist2(b.x,b.y,p.x,p.y)<80*80){bb.style.display="flex";bb.textContent="เก็บ📡";}
+  else if(b.state==="carried"&&beaconMine){bb.style.display="flex";bb.textContent="ปัก📡";}
+  else if(b.state==="planted"&&beaconMine&&dist2(b.x,b.y,p.x,p.y)<60*60){bb.style.display="flex";bb.textContent="ยก📡";}
+  else if(b.state==="planted"&&!beaconMine&&dist2(b.x,b.y,p.x,p.y)<54*54){bb.style.display="flex";bb.textContent="ทุบ📡";}
   else bb.style.display="none";
   // weapon swap button (when you own both a melee and a ranged weapon)
   const sw=$("a-swap");const hh=G.equip.hand?ITEMS[G.equip.hand.id]:null;
@@ -2569,7 +2583,7 @@ function showStart(){
   const s=slotInfo();
   $("cover-box").innerHTML=`
     <h1>Last Short Island</h1>
-    <div style="font-size:11px;color:var(--good);margin:-4px 0 6px">🌐 เซิร์ฟเวอร์ออนไลน์ · รีเซ็ตทุก 10 นาที · รอบนี้เหลือ <b>${fmtClock(s.remain)}</b></div>
+    <div style="font-size:11px;color:var(--good);margin:-4px 0 6px">🌐 เซิร์ฟเวอร์ออนไลน์ · รีเซ็ตทุก 30 นาที · รอบนี้เหลือ <b>${fmtClock(s.remain)}</b></div>
     <div style="font-size:11px;opacity:.85;margin-bottom:6px">ชื่อคุณ: <b style="color:var(--amber)">${G.playerName}</b>
        <span class="danger-link" style="font-size:10px" onclick="renamePlayer()">เปลี่ยนชื่อ</span></div>
     <p style="font-size:12px">เกาะนี้จะ <b style="color:var(--danger)">ระเบิดเมื่อหมดรอบ</b> — คุณกับผู้รอดชีวิตอื่น

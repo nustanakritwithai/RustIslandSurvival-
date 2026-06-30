@@ -2,7 +2,7 @@
 // derived from wall-clock time, so every server and client computes the same
 // slot id / remaining time for a given moment. This mirrors slotInfo() in the
 // original game and is the foundation that keeps all players in sync.
-export const SLOT_MS = 600000; // 10 minutes
+export const SLOT_MS = 1800000; // 30 minutes
 
 export function slotInfo(nowMs = Date.now()) {
   const start = Math.floor(nowMs / SLOT_MS) * SLOT_MS;

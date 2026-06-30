@@ -5,7 +5,7 @@
 // trusts client-reported plant positions.
 
 export const WORLD = { W: 6400, H: 4400 };
-export const CAPTURE_WINDOW = 150; // seconds before round end that the crate becomes grabbable
+export const CAPTURE_WINDOW = 360; // seconds before round end that the crate becomes grabbable (~6 min finale)
 export const BEACON_MAXHP = 260;
 export const GRAB_R2 = 80 * 80;    // how close you must be to grab the crate
 export const PLANT_LIFT_R2 = 70 * 70;
