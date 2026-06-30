@@ -922,6 +922,8 @@ function damagePlayer(amt,fromx,fromy){
     if(G.equip.body&&ITEMS[G.equip.body.id].dur){G.equip.body.dur=(G.equip.body.dur??ITEMS[G.equip.body.id].dur)-0.5;if(G.equip.body.dur<=0){toast(ITEMS[G.equip.body.id].nm+" พังแล้ว!");G.equip.body=null;}}
   }
   p.hp=clamp(p.hp-amt,0,100);p.dmgT=0.3;sfx("hurt");
+  if(amt>=0.5)spawnDmg(p.x,p.y-16,Math.round(amt),"#ff6a5a",true);
+  addShake(Math.min(9,3+amt*0.4));
   // knockback
   const d=Math.hypot(p.x-fromx,p.y-fromy)||1;p.vx+=(p.x-fromx)/d*60;p.vy+=(p.y-fromy)/d*60;
   if(p.hp<=0)die();
@@ -1225,7 +1227,7 @@ function attack(){
   p.atkT=0.22;
   const w=nearestEnemyMelee();
   if(w){ensureHandWeapon();const hd2=handDef();if(hd2&&hd2.ranged){if(p.shootCd<=0)fireRanged();return;}
-    const dmg=Math.round((handWeaponDmg()||2)*((G.player.buffs&&G.player.buffs.power)?1+BUFFS.power.dmg:1));w.hp-=dmg;w.dmgT=0.25;sfx("hit");reportMobHit(w,dmg);
+    const dmg=Math.round((handWeaponDmg()||2)*((G.player.buffs&&G.player.buffs.power)?1+BUFFS.power.dmg:1));w.hp-=dmg;w.dmgT=0.25;sfx("hit");reportMobHit(w,dmg);spawnDmg(w.x,w.y-12,dmg,"#ffe08a");addShake(2.5);
     const d=Math.hypot(w.x-p.x,w.y-p.y)||1;w.x+=(w.x-p.x)/d*22;w.y+=(w.y-p.y)/d*22;
     p.stam=clamp(p.stam-4,0,100);
     spawnFx(w.x,w.y,6,"#ffd27a",{spMin:60,spMax:150,grav:120,lifeMin:0.2,lifeMax:0.4,rMin:1.5,rMax:3});
@@ -1292,6 +1294,7 @@ function throwBomb(){
   toast("ขว้างระเบิด!");
 }
 function boom(pr){
+  addShake(9);
   sfx("boom");
   const r=pr.blast||55;
   for(const w of G.wolves){if(dist2(w.x,w.y,pr.x,pr.y)<r*r){w.hp-=pr.bd||60;w.dmgT=0.3;reportMobHit(w,pr.bd||60);}}
@@ -1319,7 +1322,7 @@ function projTick(dt){
     }
     if(pr.explode){ if(pr.t>=pr.life||wall||oob){boom(pr);G.projectiles.splice(i,1);} continue; }
     let hitWolf=false;
-    for(const w of G.wolves){if(dist2(w.x,w.y,pr.x,pr.y)<20*20){w.hp-=pr.dmg;w.dmgT=0.25;reportMobHit(w,pr.dmg);
+    for(const w of G.wolves){if(dist2(w.x,w.y,pr.x,pr.y)<20*20){w.hp-=pr.dmg;w.dmgT=0.25;reportMobHit(w,pr.dmg);spawnDmg(w.x,w.y-12,pr.dmg,"#ffe08a");
       spawnFx(w.x,w.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;break;}}
     if(!hitWolf)for(const b of G.bots){if(b.hp>0&&dist2(b.x,b.y,pr.x,pr.y)<18*18){b.hp-=pr.dmg;b.dmgT=0.25;
       spawnFx(b.x,b.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;break;}}
@@ -2093,6 +2096,7 @@ function update(dt){
   projTick(dt);
   survival(dt);
   fxTick(dt);
+  if(G.dmgNums)for(let i=G.dmgNums.length-1;i>=0;i--){if((G.dmgNums[i].t+=dt)>0.85)G.dmgNums.splice(i,1);}
 }
 function autoConsume(){
   const p=G.player;
@@ -2109,10 +2113,18 @@ function resize(){DPR=Math.min(2,window.devicePixelRatio||1);VW=window.innerWidt
 window.addEventListener("resize",resize);
 
 let cam={x:0,y:0};
+function addShake(m){G.shake=Math.max(G.shake||0,m);} // call on hits/explosions
+function spawnDmg(x,y,val,col,big){if(!G.dmgNums)G.dmgNums=[];if(G.dmgNums.length>40)G.dmgNums.shift();G.dmgNums.push({x:x+rand(-6,6),y,val:Math.round(val),col:col||"#ffe08a",t:0,big:!!big});}
 function draw(){
   const p=G.player;
-  cam.x=clamp(p.x-VW/2,0,W-VW); if(W<VW)cam.x=(W-VW)/2;
-  cam.y=clamp(p.y-VH/2,0,H-VH); if(H<VH)cam.y=(H-VH)/2;
+  // smoothed follow camera with velocity look-ahead + screen shake
+  let tx=clamp(p.x-VW/2+clamp(p.vx*0.16,-110,110),0,W-VW); if(W<VW)tx=(W-VW)/2;
+  let ty=clamp(p.y-VH/2+clamp(p.vy*0.16,-110,110),0,H-VH); if(H<VH)ty=(H-VH)/2;
+  if(G._camx==null){G._camx=tx;G._camy=ty;}
+  G._camx+=(tx-G._camx)*0.16;G._camy+=(ty-G._camy)*0.16;
+  G.shake=(G.shake||0)*0.86; if(G.shake<0.3)G.shake=0;
+  cam.x=G._camx+(Math.random()*2-1)*G.shake;
+  cam.y=G._camy+(Math.random()*2-1)*G.shake;
   ctx.clearRect(0,0,VW,VH);
   // biomes with natural (organic) borders — pre-rendered land map, blitted smooth
   if(G._land){
@@ -2146,23 +2158,32 @@ function draw(){
       ctx.textAlign="left";
     }
   }
-  // nodes
-  for(const n of G.nodes){if(n.dead)continue;const sx=n.x-cam.x,sy=n.y-cam.y;
-    if(sx<-40||sy<-40||sx>VW+40||sy>VH+40)continue;rnode(n,sx,sy);}
-  // buildings
-  for(const b of G.buildings){const sx=b.x-cam.x,sy=b.y-cam.y;if(sx<-40||sy<-40||sx>VW+40||sy>VH+40)continue;rbuild(b,sx,sy);}
-  // loot bags
+  // ---- ground layer (flat, under actors) ----
+  const cull=(x,y,m)=>{const sx=x-cam.x,sy=y-cam.y;return sx<-m||sy<-m||sx>VW+m||sy>VH+m;};
+  for(const n of G.nodes){if(n.dead||n.type!=="water")continue;if(cull(n.x,n.y,40))continue;rnode(n,n.x-cam.x,n.y-cam.y);}
   for(const l of G.loot){const sx=l.x-cam.x,sy=l.y-cam.y;rloot(l,sx,sy);}
-  // airdrop / planted beacon
   drawBeacon();
-  // wild horses
-  for(const h of G.horses){const sx=h.x-cam.x,sy=h.y-cam.y;if(sx<-50||sy<-50||sx>VW+50||sy>VH+50)continue;rhorse(sx,sy,h.dir);}
-  // wolves
-  for(const w of G.wolves){const sx=w.x-cam.x,sy=w.y-cam.y;if(sx<-40||sy<-40||sx>VW+40||sy>VH+40)continue;rwolf(w,sx,sy);}
-  // bots (other survivors) — local fallback when offline
-  for(const b of G.bots){const sx=b.x-cam.x,sy=b.y-cam.y;if(sx<-50||sy<-50||sx>VW+50||sy>VH+50)continue;rbot(b,sx,sy);}
-  // remote players + server bots (online)
-  if(window.NET&&NET.connected)netDrawRemotes();
+  // ---- y-sorted actor layer (so you can walk behind trees/walls/others) ----
+  const ents=[];
+  for(const n of G.nodes){if(n.dead||n.type==="water")continue;if(cull(n.x,n.y,40))continue;ents.push({y:n.y,t:0,o:n});}
+  for(const b of G.buildings){if(cull(b.x,b.y,40))continue;ents.push({y:b.y,t:1,o:b});}
+  for(const h of G.horses){if(G.mounted===h)continue;if(cull(h.x,h.y,50))continue;ents.push({y:h.y,t:2,o:h});}
+  for(const w of G.wolves){if(cull(w.x,w.y,40))continue;ents.push({y:w.y,t:3,o:w});}
+  for(const b of G.bots){if(cull(b.x,b.y,50))continue;ents.push({y:b.y,t:4,o:b});}
+  if(window.NET&&NET.connected){
+    NET.botMap.forEach(e=>{if(!cull(e.x,e.y,50))ents.push({y:e.y,t:4,o:e});});
+    NET.players.forEach(e=>{if(!cull(e.x,e.y,50))ents.push({y:e.y,t:4,o:e});});
+  }
+  ents.push({y:p.y,t:5,o:p});
+  ents.sort((a,b)=>a.y-b.y);
+  for(const e of ents){const o=e.o,sx=o.x-cam.x,sy=o.y-cam.y;
+    if(e.t===0)rnode(o,sx,sy);
+    else if(e.t===1)rbuild(o,sx,sy);
+    else if(e.t===2)rhorse(sx,sy,o.dir);
+    else if(e.t===3)rwolf(o,sx,sy);
+    else if(e.t===4)rbot(o,sx,sy);
+    else{ if(G.mounted){rhorse(sx,sy,p.dir);rplayer(sx,sy-7);}else rplayer(sx,sy); }
+  }
   // projectiles (arrows / bullets / bombs)
   for(const pr of G.projectiles){const sx=pr.x-cam.x,sy=pr.y-cam.y;const a=Math.atan2(pr.vy,pr.vx);
     if(pr.enemy){ctx.fillStyle="#8fd14a";ctx.beginPath();ctx.arc(sx,sy,4,0,7);ctx.fill();
@@ -2174,13 +2195,15 @@ function draw(){
       ctx.fillStyle="#9aa4ab";ctx.beginPath();ctx.moveTo(8,0);ctx.lineTo(3,-2.5);ctx.lineTo(3,2.5);ctx.closePath();ctx.fill();ctx.restore();}
     else{ctx.save();ctx.translate(sx,sy);ctx.rotate(a); // bullet: short bright streak
       ctx.strokeStyle="#ffe08a";ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(-7,0);ctx.lineTo(4,0);ctx.stroke();ctx.restore();}}
-  // particles (under player)
+  // particles
   for(const f of G.fx){const a=1-f.t/f.life;ctx.globalAlpha=clamp(a,0,1);ctx.fillStyle=f.color;
     ctx.beginPath();ctx.arc(f.x-cam.x,f.y-cam.y,f.r,0,7);ctx.fill();}
   ctx.globalAlpha=1;
-  // player (on horseback if mounted)
-  if(G.mounted){rhorse(p.x-cam.x,p.y-cam.y,p.dir);rplayer(p.x-cam.x,p.y-cam.y-7);}
-  else rplayer(p.x-cam.x,p.y-cam.y);
+  // floating damage numbers
+  if(G.dmgNums)for(const d of G.dmgNums){const a=clamp(1-d.t/0.85,0,1);
+    ctx.globalAlpha=a;ctx.fillStyle=d.col;ctx.font="bold "+(12+(d.big?6:0))+"px var(--disp),sans-serif";ctx.textAlign="center";
+    ctx.fillText(d.val,d.x-cam.x,d.y-cam.y-d.t*34);}
+  ctx.globalAlpha=1;ctx.textAlign="left";
   // carried beacon over the player's head
   if(G.beacon.state==="carried"){const px=p.x-cam.x,py=p.y-cam.y-(G.mounted?30:22);
     const pulse=0.5+0.5*Math.sin(now()/160);
@@ -2226,6 +2249,13 @@ function draw(){
     cam._vig=v;cam._vw=VW;cam._vh=VH;
   }
   ctx.fillStyle=cam._vig;ctx.fillRect(0,0,VW,VH);
+  // low-HP danger pulse at the screen edges
+  if(!G.dead&&G.round.active&&p.hp<35){
+    const pulse=0.5+0.5*Math.sin(now()/240),a=(1-p.hp/35)*0.5*pulse;
+    const rv=ctx.createRadialGradient(VW/2,VH/2,Math.min(VW,VH)*0.3,VW/2,VH/2,Math.max(VW,VH)*0.7);
+    rv.addColorStop(0,"rgba(180,20,20,0)");rv.addColorStop(1,`rgba(170,15,15,${a})`);
+    ctx.fillStyle=rv;ctx.fillRect(0,0,VW,VH);
+  }
 }
 // fireflies drift near the player at night for ambience
 const _ff=[];
