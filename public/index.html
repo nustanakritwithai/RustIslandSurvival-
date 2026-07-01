@@ -712,20 +712,19 @@ function generateDeco(){
     const x=rand(60,W-60),y=rand(60,H-60),z=zoneAt(x,y);
     if(!pred(z))continue; if(dist2(x,y,SPAWN.x,SPAWN.y)<150*150)continue;
     add(type,x,y); n--;}};
-  scatterDeco("palm", 70, z=>z.nm==="ชายหาด");
-  scatterDeco("shell",40, z=>z.nm==="ชายหาด");
-  scatterDeco("fern",150, z=>z.nm==="ป่า");
-  scatterDeco("grass",240,z=>z.risk<=1&&z.nm!=="ฐาน");
-  scatterDeco("lotus",55, z=>z.nm==="หนองน้ำ");
-  scatterDeco("stump",45, z=>z.nm==="เถ้าถ่าน");
-  scatterDeco("paddy",6,  z=>z.nm==="ป่า"); // rice paddies in the forest lowlands
+  scatterDeco("palm", 34, z=>z.nm==="ชายหาด");
+  scatterDeco("fern", 60, z=>z.nm==="ป่า");
+  scatterDeco("grass",90, z=>z.risk<=1&&z.nm!=="ฐาน");
+  scatterDeco("lotus",22, z=>z.nm==="หนองน้ำ");
+  scatterDeco("stump",20, z=>z.nm==="เถ้าถ่าน");
+  scatterDeco("paddy",4,  z=>z.nm==="ป่า"); // rice paddies in the forest lowlands
   // Thai touches at the base: spirit house + sala pavilion + lanterns
   add("shrine",SPAWN.x-260,SPAWN.y-150,{s:1});
   add("sala",  SPAWN.x+250,SPAWN.y-120,{s:1});
   add("lantern",SPAWN.x-150,SPAWN.y+150,{s:1});
   add("lantern",SPAWN.x+150,SPAWN.y+150,{s:1});
   // a few floating krathong on swamp water for flavor
-  scatterDeco("krathong",14,z=>z.nm==="หนองน้ำ");
+  scatterDeco("krathong",6,z=>z.nm==="หนองน้ำ");
   buildLandMap();
 }
 /* Pre-render biomes onto a downscaled offscreen canvas with organic (wobbly)
