@@ -242,6 +242,7 @@
   <button class="mb" id="m-build">สร้าง <span class="kbd">[B]</span></button>
 </div>
 <div id="right">
+  <button class="ab small" id="a-rot" style="display:none">⟳ หมุน</button>
   <button class="ab small" id="a-beacon" style="display:none">📡</button>
   <button class="ab small" id="a-mount" style="display:none">🐴</button>
   <button class="ab small" id="a-swap" style="display:none">⇄</button>
@@ -941,15 +942,17 @@ function recordRun(kind,data){
   saveHistory();save();
   showSummary(entry);
 }
+// snapshot a slot into a loot-bag item, keeping wear and chambered ammo
+function bagItem(s){return {id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{}),...(s.loaded!=null?{loaded:s.loaded}:{})};}
 function dropEquipInto(bag){
   if(!CFG.dropEquipOnDeath)return;
-  for(const k in G.equip){const e=G.equip[k];if(e){bag.push({id:e.id,n:e.n,...(e.dur!=null?{dur:e.dur}:{})});G.equip[k]=null;}}
+  for(const k in G.equip){const e=G.equip[k];if(e){bag.push(bagItem(e));G.equip[k]=null;}}
 }
 function die(){
   if(G.dead)return; G.dead=true; G.mounted=null; sfx("lose"); musicStop();
   if(carryingBeacon()){G.beacon.state="crate";G.beacon.owner=null;G.beacon.x=G.player.x;G.beacon.y=G.player.y;}
   const p=G.player;
-  const bag=G.inv.map(s=>({id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{})}));
+  const bag=G.inv.map(bagItem);
   dropEquipInto(bag);
   const lostVal=bagValue(bag);
   G.inv.length=0;
@@ -966,7 +969,7 @@ function extract(){
 }
 function timeoutRound(){
   const p=G.player;
-  const bag=G.inv.map(s=>({id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{})}));
+  const bag=G.inv.map(bagItem);
   dropEquipInto(bag);
   const lostVal=bagValue(bag);
   G.inv.length=0;
@@ -984,7 +987,7 @@ function winRound(){
   recordRun("win",{gained:items,val});
 }
 function botWins(bot){
-  const bag=G.inv.map(s=>({id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{})}));dropEquipInto(bag);const lostVal=bagValue(bag);G.inv.length=0;
+  const bag=G.inv.map(bagItem);dropEquipInto(bag);const lostVal=bagValue(bag);G.inv.length=0;
   if(bag.length)G.loot.push({x:G.player.x,y:G.player.y,items:bag,t:150,corpse:true});
   G.beacon={state:"none"};
   sfx("lose");pushWinner(bot.name,200);
@@ -1412,7 +1415,8 @@ function actPrimary(){
 function takeLoot(l){
   let any=false;
   for(let i=l.items.length-1;i>=0;i--){const it=l.items[i];
-    if(it.dur!=null){if(invAddSlot({id:it.id,n:it.n,dur:it.dur})){l.items.splice(i,1);any=true;}continue;} // keep wear on picked-up gear
+    if(it.dur!=null||it.loaded!=null){ // keep wear + chambered ammo on picked-up gear
+      if(invAddSlot({id:it.id,n:it.n,...(it.dur!=null?{dur:it.dur}:{}),...(it.loaded!=null?{loaded:it.loaded}:{})})){l.items.splice(i,1);any=true;}continue;}
     const added=invAdd(it.id,it.n);if(added>0){it.n-=added;any=true;}if(it.n<=0)l.items.splice(i,1);}
   if(any){sfx("pickup");toast("เก็บของจากศพแล้ว");}else toast("กระเป๋าเต็ม");
   if(l.items.length===0){const idx=G.loot.indexOf(l);if(idx>=0)G.loot.splice(idx,1);}
@@ -1440,10 +1444,10 @@ function doEdit(){
   }
 }
 function startBuild(id){
-  G.editMode=null;
+  G.editMode=null;G.buildDir=null;
   if(invCount(id)<1){toast("ไม่มี "+ITEMS[id].nm);return;}
   if(ITEMS[id].place!=="core" && !G.core){toast("ต้องวางเสาเขตแดนก่อน");return;}
-  G.buildMode=id;closePanel();toast("แตะ \"วาง\" เพื่อวางใน"+(ITEMS[id].place==="core"?"จุดที่ยืน":"เขตแดน"));
+  G.buildMode=id;closePanel();toast("แตะ \"วาง\" เพื่อวางใน"+(ITEMS[id].place==="core"?"จุดที่ยืน":"เขตแดน")+" · ⟳ หมุนทิศได้");
 }
 function setEditMode(m){
   G.buildMode=null;
@@ -1452,14 +1456,24 @@ function setEditMode(m){
   if(G.editMode==="demolish")toast("โหมดรื้อถอน — เดินไปใกล้สิ่งปลูกสร้างแล้วกด \"รื้อ\" (วัสดุคืนกระเป๋า)");
   else if(G.editMode==="move")toast("โหมดย้าย — เดินไปใกล้สิ่งปลูกสร้างแล้วกด \"ยก\" เพื่อยกขึ้น");
 }
+// while placing, ⟳ locks the ghost to a cardinal side of the player and cycles it
+const BUILD_DIRS=[[1,0],[0,1],[-1,0],[0,-1]], BUILD_DIR_NM=["→ ขวา","↓ ล่าง","← ซ้าย","↑ บน"];
+function aimDirIndex(){const a=G.player.aim||0,c=Math.cos(a),s=Math.sin(a);
+  if(Math.abs(c)>=Math.abs(s))return c>=0?0:2; return s>=0?1:3;}
+function rotateBuild(){
+  if(!G.buildMode)return;
+  G.buildDir=((G.buildDir==null?aimDirIndex():G.buildDir)+1)%4;
+  sfx("ui");toast("หมุนตำแหน่งวาง: "+BUILD_DIR_NM[G.buildDir]);
+}
 function buildTarget(){
   const p=G.player,def=ITEMS[G.buildMode];
   if(def&&def.place==="core")return {x:p.x,y:p.y};
   const GR=40;
-  // place one tile in the cardinal direction you're aiming (up/down/left/right)
-  const a=p.aim||0,cx=Math.cos(a),cy=Math.sin(a);
+  // place one tile toward the locked ⟳ direction, else where you're aiming
   let ox=0,oy=0;
-  if(Math.abs(cx)>=Math.abs(cy)) ox=cx>=0?1:-1; else oy=cy>=0?1:-1;
+  if(G.buildDir!=null){ox=BUILD_DIRS[G.buildDir][0];oy=BUILD_DIRS[G.buildDir][1];}
+  else{const a=p.aim||0,cx=Math.cos(a),cy=Math.sin(a);
+    if(Math.abs(cx)>=Math.abs(cy)) ox=cx>=0?1:-1; else oy=cy>=0?1:-1;}
   let px=Math.round((p.x+GR*ox)/GR)*GR;
   let py=Math.round((p.y+GR*oy)/GR)*GR;
   if(Math.abs(px-p.x)<30 && Math.abs(py-p.y)<30){ px+=GR*ox; py+=GR*oy; }
@@ -1498,7 +1512,7 @@ function placeBuild(){
   // keep placing if it's a stackable structure and you still have more
   if(def.stack>1 && invCount(id)>0){sfx("build");toast("วาง"+def.nm+" (เหลือ "+invCount(id)+") — วางต่อได้เลย");save();return;}
   sfx("build");toast("วาง"+def.nm+"แล้ว");
-  G.buildMode=null;save();
+  G.buildMode=null;G.buildDir=null;save();
 }
 
 /* ---------- storage ---------- */
@@ -1560,11 +1574,11 @@ function durBarHtml(slot){const d=ITEMS[slot.id];if(slot.dur==null||!d.dur)retur
 function hasHammer(){return (G.equip.hand&&ITEMS[G.equip.hand.id].tool==="hammer")||G.inv.some(s=>ITEMS[s.id].tool==="hammer");}
 function freeSafe(id){for(let i=0;i<SAFE_SLOTS;i++){const s=G.player.safe[i];if(!s||(s.id===id))return i;}return -1;}
 function toSafe(index){const s=G.inv[index];if(!s)return;const i=freeSafe(s.id);if(i<0){toast("ช่องปลอดภัยเต็ม");return;}
-  if(!G.player.safe[i])G.player.safe[i]={id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{})};else G.player.safe[i].n+=s.n;
+  if(!G.player.safe[i])G.player.safe[i]=bagItem(s);else G.player.safe[i].n+=s.n;
   G.inv.splice(index,1);save();}
-function fromSafe(i){const s=G.player.safe[i];if(!s)return;if(invAddSlot({id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{})})){G.player.safe[i]=null;save();}else toast("กระเป๋าเต็ม");}
+function fromSafe(i){const s=G.player.safe[i];if(!s)return;if(invAddSlot(bagItem(s))){G.player.safe[i]=null;save();}else toast("กระเป๋าเต็ม");}
 function dropItem(index){const s=G.inv[index];if(!s)return;const p=G.player;
-  G.loot.push({x:p.x+rand(-12,12),y:p.y+18,items:[{id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{})}],t:120});G.inv.splice(index,1);toast("ทิ้ง"+ITEMS[s.id].nm);}
+  G.loot.push({x:p.x+rand(-12,12),y:p.y+18,items:[bagItem(s)],t:120});G.inv.splice(index,1);toast("ทิ้ง"+ITEMS[s.id].nm);}
 function splitStack(index){const s=G.inv[index];if(!s||s.n<2)return;if(G.inv.length>=invSlots()){toast("ไม่มีช่องว่าง");return;}
   const half=Math.floor(s.n/2);s.n-=half;G.inv.push({id:s.id,n:half});}
 function assignHotbar(id,slot){
@@ -1962,6 +1976,7 @@ function setupInput(){
   // buttons
   const bind=(id,fn)=>{const el=$(id);const h=e=>{e.preventDefault();fn();};el.addEventListener("touchstart",h,{passive:false});el.addEventListener("click",e=>{if(e.detail!==0)fn();});};
   bind("a-act",()=>actPrimary());
+  bind("a-rot",()=>rotateBuild());
   bind("a-reload",()=>reload());
   bind("a-swap",()=>swapWeapon());
   bind("a-beacon",()=>beaconAction());
@@ -1987,14 +2002,14 @@ function setupInput(){
     if(k==="e")actPrimary();
     if(k===" "){e.preventDefault();attack();}
     if(k==="f")tryConsume();
-    if(k==="r")reload();
+    if(k==="r"){if(G.buildMode)rotateBuild();else reload();}
     if(k==="q")swapWeapon();
     if(k==="m"){G.mapOpen=!G.mapOpen;}
     if(k==="h")toggleMount();
     if(k==="i"){$("panel").classList.contains("on")?closePanel():openInv();}
     if(k==="c"){$("panel").classList.contains("on")?closePanel():openCraft();}
     if(k==="b"){$("panel").classList.contains("on")?closePanel():openBuild();}
-    if(k==="escape"){G.buildMode=null;G.editMode=null;closePanel();}
+    if(k==="escape"){G.buildMode=null;G.buildDir=null;G.editMode=null;closePanel();}
     if(k>="1"&&k<="4"){useHotbar(+k-1);}
   });
   window.addEventListener("keyup",e=>{keys[e.key.toLowerCase()]=false;});
@@ -2786,7 +2801,7 @@ function updateHUD(){
   else if(G.editMode){const near=nearestBuildEdit();
     pr=G.editMode==="move"?(near?`✋ กด <b>ยก</b> เพื่อยกขึ้น`:`โหมดย้าย — เดินไปใกล้สิ่งปลูกสร้าง`)
                           :(near?`🗑️ กด <b>รื้อ</b> เพื่อรื้อถอน`:`โหมดรื้อ — เดินไปใกล้สิ่งปลูกสร้าง`);}
-  else if(G.buildMode)pr=`กำลังวาง <b>${ITEMS[G.buildMode].nm}</b> — กด "วาง"`;
+  else if(G.buildMode)pr=`กำลังวาง <b>${ITEMS[G.buildMode].nm}</b> — กด <b>วาง</b> · <b>⟳</b> หมุนทิศ${G.buildDir!=null?` (${BUILD_DIR_NM[G.buildDir]})`:""}`;
   else{const l=nearestLoot();const n=nearestNode();const box=nearestStation("box");const fur=nearestStation("furnace");const wf=nearestWolf();
     if(wf)pr=`สัตว์ป่าใกล้ — กด <b>ตี</b>`;
     else if(l)pr=`${l.corpse?"💀 ศพ":"🎒 ของ"} — กด <b>เก็บ</b>`;
@@ -2797,6 +2812,8 @@ function updateHUD(){
   const pe=$("prompt");if(pr){pe.innerHTML=pr;pe.classList.add("on");}else pe.classList.remove("on");
   // action button label
   $("a-act").textContent=G.editMode?(G.editMode==="move"?"ยก":"รื้อ"):G.buildMode?"วาง":"เก็บ";
+  // rotate button (only while placing a directional build)
+  $("a-rot").style.display=(G.buildMode&&ITEMS[G.buildMode].place!=="core")?"flex":"none";
   // beacon action button (pick up crate / plant / relocate)
   const bb=$("a-beacon");const b=G.beacon;
   const beaconMine=(window.NET&&NET.connected)?(b.owner===NET.id):(b.owner==="player");
