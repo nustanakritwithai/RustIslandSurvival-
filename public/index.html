@@ -695,14 +695,9 @@ function buildWorld(){
   G.horses.length=0;
   spawnHorse(SPAWN.x+300,SPAWN.y+120); spawnHorse(SPAWN.x-320,SPAWN.y-90); // two near base for travel
   for(let i=0;i<8;i++)spawnHorse(rand(500,W-500),rand(500,H-500));
-  // extraction points spread across the island (each differs by RULES)
-  G.extracts=[
-    {x:SPAWN.x,y:SPAWN.y, r:80, dur:3, type:"safe",   draw:0,    nm:"ท่าเรือฐาน",   desc:"ปลอดภัย · ชาร์จไว", prog:0},
-    {x:1300,  y:2200,     r:60, dur:6, type:"mine",   draw:0.6,  nm:"จุดสกัดเหมืองตะวันตก", desc:"ใกล้แร่ · เสี่ยง", prog:0},
-    {x:W-1300,y:2200,     r:60, dur:6, type:"mine",   draw:0.6,  nm:"จุดสกัดเหมืองตะวันออก", desc:"ใกล้แร่ · เสี่ยง", prog:0},
-    {x:3200,  y:1080,     r:62, dur:5, type:"center", draw:0.9,  nm:"จุดสกัดหนองน้ำ", desc:"กลางหนองน้ำ · ศัตรูพิษ", prog:0},
-    {x:3200,  y:H-1080,   r:62, dur:8, type:"center", draw:1.1,  nm:"จุดสกัดเถ้าถ่าน", desc:"ลึกสุด · อันตรายสุด · ของดี", prog:0},
-  ];
+  // Extraction points removed: no more stand-in-the-circle-to-leave. Keep your
+  // loot safe by banking it in a storage box at your base instead.
+  G.extracts=[];
   generateDeco();
 }
 // ---- Thai tropical scenery (decorative only; no collision) ----
@@ -769,8 +764,6 @@ function regenWorld(seed){
   const prev=RNG;
   RNG=mulberry32(seed>>>0);
   try{buildWorld();}finally{RNG=prev;}
-  // keep the home extract on the player's base (deploy() also does this)
-  if(G.extracts[0]){G.extracts[0].x=G.core?G.core.x:SPAWN.x;G.extracts[0].y=G.core?G.core.y:SPAWN.y;}
   for(let i=0;i<G.nodes.length;i++)G.nodes[i].idx=i; // stable shared id for authoritative depletion
   G.worldSeed=seed;
 }
@@ -838,10 +831,9 @@ function wolfTick(dt){
       if(z.risk>=1 && dist2(x,y,p.x,p.y)>(finale?360:520)**2){spawnMob(pickMobKind(z.risk,night,esc),x,y);break;}
     }
   }
-  // beacon (planted) + extraction both lure monsters
+  // a planted beacon lures monsters
   const lure=G.beacon.state==="planted"?{x:G.beacon.x,y:G.beacon.y,draw:1.3}:null;
-  const ex=nearestExtract();
-  const drawSrc = lure || (ex&&ex.arming&&ex.draw>0?{x:ex.x,y:ex.y,draw:ex.draw}:null);
+  const drawSrc = lure;
   if(drawSrc&&G.wolves.length<cap+3&&Math.random()<dt*drawSrc.draw*1.6){
     const a=rand(0,Math.PI*2),r=rand(280,460);
     const lx=clamp(drawSrc.x+Math.cos(a)*r,60,W-60),ly=clamp(drawSrc.y+Math.sin(a)*r,60,H-60);
@@ -1176,9 +1168,6 @@ function deploy(){
   G.player.hp=100;G.player.stam=100;G.player.buffs={};G.player.status={};G.player._sick=false;
   G.player.hunger=Math.max(55,G.player.hunger);
   G.player.thirst=Math.max(55,G.player.thirst);
-  // home extract follows the base
-  if(G.extracts[0]){G.extracts[0].x=sp.x;G.extracts[0].y=G.core?G.core.y:SPAWN.y;}
-  for(const e of G.extracts)e.prog=0;
   G.wolves.length=0; G.projectiles.length=0; G.mounted=null; G.beacon={state:"none"}; G._airWarn=false;
   if(window.NET&&NET.mobById)NET.mobById.clear(); // drop stale refs so server monsters re-sync after respawn
   G.buildings=G.buildings.filter(b=>!b.bot); // never keep AI-built forts
@@ -1418,8 +1407,6 @@ function actPrimary(){
   const fur=nearestStation("furnace"); if(fur){openCraft("furnace");return;}
   const tbl=nearestStation("table"); if(tbl){openCraft("table");return;}
   const tur=nearestStation("turret"); if(tur){loadTurret(tur);return;}
-  const ex=nearestExtract(); if(ex&&G.round.active){ex.arming=true;
-    toast("⏏ กำลังสกัด — ยืนในวงจนเต็ม");return;}
   /* nothing nearby: stay silent (no toast) */
 }
 function takeLoot(l){
@@ -1782,7 +1769,6 @@ const DBG_FIELDS=[
   {k:"thirstRate",nm:"กระหายเร็ว (เท่า)",      min:0,  max:3,   step:0.1,fix:1},
   {k:"carryMax",  nm:"น้ำหนักสูงสุด (กก.)",    min:10, max:120, step:5,  fix:0},
   {k:"durLoss",   nm:"เครื่องมือสึก (เท่า)",   min:0,  max:3,   step:0.25,fix:2},
-  {k:"chargeMult",nm:"เวลาชาร์จสกัด (เท่า)",   min:0.3,max:3,   step:0.1,fix:1},
   {k:"valueMult", nm:"มูลค่าทรัพยากร (เท่า)",  min:0.5,max:3,   step:0.1,fix:1},
   {k:"spawnRate", nm:"ความถี่ทรัพยากร (เท่า)", min:0.3,max:2.5, step:0.1,fix:1},
   {k:"dropEquipOnDeath", nm:"ตายแล้วของสวมตก (1=ตก)", min:0,max:1, step:1, fix:0},
@@ -2108,10 +2094,6 @@ function update(dt){
     }
     if(!net)airdropTimeline(); // when connected the server drives the airdrop
     if(G.round.time<=0){G.round.time=0;if(!net){resolveEnd();return;}}
-    const ex=nearestExtract();
-    for(const e of G.extracts)if(e!==ex){e.prog=0;e.arming=false;}
-    if(ex&&ex.arming){ex.prog=(ex.prog||0)+dt/(ex.dur*CFG.chargeMult);if(ex.prog>=1){ex.prog=0;extract();return;}}
-    else if(!ex){/* outside any zone */}
   }
   // nodes respawn (server-driven when online, so depletion stays shared)
   if(!(window.NET&&NET.connected))
@@ -2775,7 +2757,7 @@ function updateHUD(){
   let col,warn="";
   if(val<YEL){col="#5fa05a";}
   else if(val<RED){col="#e0962e";warn="เริ่มน่ากลับฐานแล้ว";}
-  else{col="#c4452f";warn="ของแพงมาก — กลับฐาน/สกัดได้แล้ว!";}
+  else{col="#c4452f";warn="ของแพงมาก — รีบกลับฐานฝากกล่อง!";}
   gv.style.color=col;
   const f=clamp(val/RED,0,1.4);
   gv.style.textShadow=val>=RED?`0 0 ${8+f*16}px rgba(196,69,47,.9)`:val>=YEL?`0 0 6px rgba(224,150,46,.5)`:"none";
@@ -2805,18 +2787,16 @@ function updateHUD(){
     pr=G.editMode==="move"?(near?`✋ กด <b>ยก</b> เพื่อยกขึ้น`:`โหมดย้าย — เดินไปใกล้สิ่งปลูกสร้าง`)
                           :(near?`🗑️ กด <b>รื้อ</b> เพื่อรื้อถอน`:`โหมดรื้อ — เดินไปใกล้สิ่งปลูกสร้าง`);}
   else if(G.buildMode)pr=`กำลังวาง <b>${ITEMS[G.buildMode].nm}</b> — กด "วาง"`;
-  else{const l=nearestLoot();const n=nearestNode();const box=nearestStation("box");const fur=nearestStation("furnace");const wf=nearestWolf();const ex=nearestExtract();
+  else{const l=nearestLoot();const n=nearestNode();const box=nearestStation("box");const fur=nearestStation("furnace");const wf=nearestWolf();
     if(wf)pr=`สัตว์ป่าใกล้ — กด <b>ตี</b>`;
     else if(l)pr=`${l.corpse?"💀 ศพ":"🎒 ของ"} — กด <b>เก็บ</b>`;
     else if(box)pr=`กล่องเก็บของ — กด <b>เก็บ</b> เพื่อฝาก`;
     else if(fur)pr=`เตาหลอม — กด <b>เก็บ</b> เพื่อหลอม/ปรุง`;
     else if(n){const t2=NODE_TYPES[n.type];const need=t2.tool&&!handToolPower(t2.tool)&&!G.inv.some(s=>ITEMS[s.id].tool===t2.tool);pr=need?`ต้องมี${t2.tool==="pick"?"อีเต้อ":"ขวาน"}ก่อน`:`${t2.ic} กด <b>เก็บ</b>`;}
-    else if(ex&&G.round.active)pr=ex.arming?`⏏ กำลังสกัด...`:`⏏ <b>${ex.nm}</b> — กด <b>สกัด</b>`;
   }
   const pe=$("prompt");if(pr){pe.innerHTML=pr;pe.classList.add("on");}else pe.classList.remove("on");
   // action button label
-  const ex2=nearestExtract();
-  $("a-act").textContent=G.editMode?(G.editMode==="move"?"ยก":"รื้อ"):G.buildMode?"วาง":(ex2&&G.round.active&&!nearestNode()&&!nearestLoot()&&!nearestStation("box")&&!nearestStation("furnace"))?"สกัด":"เก็บ";
+  $("a-act").textContent=G.editMode?(G.editMode==="move"?"ยก":"รื้อ"):G.buildMode?"วาง":"เก็บ";
   // beacon action button (pick up crate / plant / relocate)
   const bb=$("a-beacon");const b=G.beacon;
   const beaconMine=(window.NET&&NET.connected)?(b.owner===NET.id):(b.owner==="player");
@@ -2888,7 +2868,7 @@ function showSummary(e){
     <div class="stat" style="margin-top:10px">ปลอดภัยในฐาน <b>${G.banked}</b> · สูงสุด/รอบ <b>${G.bestRun}</b></div>
     <div style="margin:16px 0"><button onclick="deploy()">ลงเกาะอีกครั้ง</button>
       <button onclick="showStart()" style="background:#cdbfa3;margin-left:8px">ฐาน / ประวัติ</button></div>
-    <div style="font-size:10px;opacity:.55">เคล็ดลับ: ฝากของแพงเข้ากล่อง หรือสกัดเร็ว ดีกว่าโลภจนหมดเวลา</div>`;
+    <div style="font-size:10px;opacity:.55">เคล็ดลับ: ฝากของแพงเข้ากล่องเก็บของที่ฐานไว้ก่อน ดีกว่าโลภจนตายกลางทาง</div>`;
   show("cover");
 }
 function historyBlock(){
@@ -2931,13 +2911,13 @@ function showStart(){
       🛠️ <b>เตรียมตัว</b> — ขุด/คราฟต์/สร้างป้อม ตุนกระสุน<br>
       📡 <b>Airdrop</b> ตกกลางเกาะช่วงท้าย — แย่งกับผู้รอดชีวิตอื่น 3 คน<br>
       🛡️ <b>ปัก+ป้องกัน</b> beacon จากมอนสเตอร์+คู่แข่ง จนหมดเวลา = ชนะ<br>
-      ⏏ หรือถอยที่ <b>จุดสกัด</b> เพื่อเก็บของไว้รอบหน้า (ไม่ชนะ แต่ไม่เสียของ)</div>
+      📦 ฝากของแพงเข้า <b>กล่องเก็บของ</b> ที่ฐาน — ตายแล้วของในกล่องไม่หาย</div>
     <div style="margin:14px 0"><button onclick="deploy()">เข้าเซิร์ฟเวอร์ (เหลือ ${fmtClock(s.remain)})</button></div>
     <div id="board" style="font-size:10px;opacity:.7;margin:4px 0">กำลังโหลดกระดานผู้ชนะ...</div>
     ${historyBlock()}
     <div style="font-size:10px;opacity:.55;line-height:1.7;margin-top:12px">
-      มือถือ: สติ๊กซ้ายเดิน · ปุ่มขวา <b>เก็บ/สกัด/ตี</b> · ปุ่มล่าง <b>ของ/คราฟต์/สร้าง</b><br>
-      <span class="kbd">คอม: WASD · E เก็บ/สกัด · Space ตี · F กิน · I/C/B เมนู</span><br>
+      มือถือ: สติ๊กซ้ายเดิน · ปุ่มขวา <b>เก็บ/ตี</b> · ปุ่มล่าง <b>ของ/คราฟต์/สร้าง</b><br>
+      <span class="kbd">คอม: WASD · E เก็บ · Space ตี · F กิน · I/C/B เมนู</span><br>
       <span style="opacity:.7">Last Short Island · v1.5 · เกาะใหญ่ 2× + ไบโอมใหม่ · เล่นได้ทั้งบน Claude และเว็บ</span></div>
     ${banked||hasBase||G.history.length?'<div class="reset"><span class="danger-link" onclick="hardReset();showStart()">⟲ เริ่มใหม่หมด (ล้าง save)</span></div>':""}`;
   show("cover");
