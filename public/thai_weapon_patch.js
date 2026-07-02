@@ -24,7 +24,7 @@
     function ellipse(x,y,rx,ry,col,rot){ ctx.fillStyle=col; ctx.beginPath(); ctx.ellipse(x,y,rx,ry,rot||0,0,Math.PI*2); ctx.fill(); }
     function ovalShadow(x,y,rx,ry,a){ ctx.save(); var g=ctx.createRadialGradient(x,y,1,x,y,Math.max(rx,ry)); g.addColorStop(0,"rgba(0,0,0,"+(a==null?.22:a)+")"); g.addColorStop(1,"rgba(0,0,0,0)"); ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2); ctx.fill(); ctx.restore(); }
     function motion(o){ var vx=o&&o.vx!=null?o.vx:0,vy=o&&o.vy!=null?o.vy:0; if(o&&o.tx!=null&&o.x!=null){ vx=(o.tx-o.x)*10; vy=(o.ty-o.y)*10; } var sp=Math.hypot(vx||0,vy||0); return {vx:vx,vy:vy,speed:sp,moving:sp>5,phase:T()/(sp>80?76:sp>25?105:150)+((o&&o.wob)||0)}; }
-    function facing(o,m){ var a=null; if(o&&typeof o.aim==="number") a=o.aim; else if(o&&typeof o.dir==="number") a=o.dir; else if(m&&m.speed>5) a=Math.atan2(m.vy,m.vx); if(a==null||!isFinite(a)) return "down"; var c=Math.cos(a),s=Math.sin(a); if(Math.abs(c)>Math.abs(s)) return c>=0?"right":"left"; return s>=0?"down":"up"; }
+    function facing(o,m){ var a=null; if(o&&typeof o.aim==="number") a=o.aim; else if(m&&m.speed>5) a=Math.atan2(m.vy,m.vx); else if(o&&typeof o.dir==="number") return o.dir<0?"left":"right"; if(a==null||!isFinite(a)) return "down"; var c=Math.cos(a),s=Math.sin(a); if(Math.abs(c)>Math.abs(s)) return c>=0?"right":"left"; return s>=0?"down":"up"; }
     function resourceText(n){ var s=""; if(!n)return s; var keys=["type","kind","id","dropId","drop","item","res","resource","name","nm","t","icon","yield","extra"]; for(var i=0;i<keys.length;i++){ var v=n[keys[i]]; if(v==null) continue; if(typeof v==="string"||typeof v==="number") s+=" "+v; else if(typeof v==="object"){ try{s+=" "+JSON.stringify(v);}catch(e){} } } try{s+=" "+JSON.stringify(n);}catch(e){} return s.toLowerCase(); }
     function isTree(k){ return /tree|wood|log|palm|coconut|mango|ต้นไม้|ไม้ยืนต้น|ไม้/.test(k) && !/bamboo|ไผ่|banana|plantain|กล้วย|ต้นกล้วย/.test(k); }
 
@@ -87,7 +87,10 @@
 
     var oldRPlayer = rplayer, oldRBot = rbot;
     rplayer=function(sx,sy){ var p=G.player||{}; var eq=G.equip||{}; var weapon=eq.hand?eq.hand.id:""; var SK=(window.SKINS&&window.SKINS[(G.skin||0)])||{shirt:"#294d61",pant:"#2b2a28"}; drawThaiHuman(p,sx,sy,{shirt:SK.shirt,pant:SK.pant,weapon:weapon,hatScale:1,body:eq.body&&eq.body.id,head:eq.head&&eq.head.id}); drawNearbyCanopyOverlay(); };
-    rbot=function(o,sx,sy){ var SK=(window.SKINS&&o&&o.skin!=null)?window.SKINS[o.skin]:null; drawThaiHuman(o||{},sx,sy,{shirt:SK?SK.shirt:"#3e5f43",pant:SK?SK.pant:"#342a23",weapon:"",skin:"#e3b184",hatScale:.86}); dot(sx,sy-30,2.1,"rgba(255,255,255,.72)"); };
+    rbot=function(o,sx,sy){ var SK=(window.SKINS&&o&&o.skin!=null)?window.SKINS[o.skin]:null; drawThaiHuman(o||{},sx,sy,{shirt:SK?SK.shirt:"#3e5f43",pant:SK?SK.pant:"#342a23",weapon:"",skin:"#e3b184",hatScale:.86});
+      var lift=o&&o.carrying?14:0;
+      if(o&&o.name){ctx.fillStyle="#cdbfa3";ctx.font="8px sans-serif";ctx.textAlign="center";ctx.fillText(o.name,sx,sy-32-lift);ctx.textAlign="left";}
+      if(o&&o.hp!=null&&o.maxhp&&o.hp<o.maxhp){ctx.fillStyle="rgba(0,0,0,.5)";ctx.fillRect(sx-12,sy-28-lift,24,3);ctx.fillStyle="#5fd17a";ctx.fillRect(sx-12,sy-28-lift,24*Math.max(0,Math.min(1,o.hp/o.maxhp)),3);} };
     if(typeof toast==="function") setTimeout(function(){ toast("🏹 เพิ่มธนู/ปืน และแก้ฟาดซ้าย+ที่ขุดหินแล้ว"); },900);
   }
   setTimeout(install,0);

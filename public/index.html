@@ -1244,7 +1244,7 @@ function attack(){
       const dd=dist2(o.x,o.y,p.x,p.y);if(dd<bd){bd=dd;bb=o;bidx=k;}}
     if(bb){const dmg=8+(handWeaponDmg()||0)*0.5;bb.hp-=dmg;p.stam=clamp(p.stam-3,0,100);sfx("hit");
       spawnFx(bb.x,bb.y,5,"#b9935a",{spMin:40,spMax:120,grav:120});
-      if(bb.hp<=0){G.buildings.splice(bidx,1);toast("ทุบกำแพงพัง");}
+      if(bb.hp<=0){if(bb.net&&bb.nid!=null)netSend({t:"build",op:"del",id:bb.nid});G.buildings.splice(bidx,1);toast("ทุบกำแพงพัง");}
       if(handWeaponDmg())degradeHand();}
   }
 }
@@ -1305,7 +1305,7 @@ function boom(pr){
   for(const b of G.bots){if(b.hp>0&&dist2(b.x,b.y,pr.x,pr.y)<r*r){b.hp-=pr.bd||60;b.dmgT=0.3;}}
   for(let bi=G.buildings.length-1;bi>=0;bi--){const bd=G.buildings[bi];
     if(dist2(bd.x,bd.y,pr.x,pr.y)<(r+8)*(r+8)){bd.hp-=(pr.bd||60)*1.2;
-      if(bd.hp<=0){if(bd.type==="table"||bd.type==="core"){}G.buildings.splice(bi,1);}}}
+      if(bd.hp<=0){if(bd.net&&bd.nid!=null)netSend({t:"build",op:"del",id:bd.nid});G.buildings.splice(bi,1);}}}
   spawnFx(pr.x,pr.y,20,"#ffb347",{spMin:70,spMax:280,grav:50,lifeMin:0.3,lifeMax:0.65,rMin:2,rMax:6});
   spawnFx(pr.x,pr.y,12,"#c4452f",{spMin:50,spMax:200,grav:50,lifeMin:0.35,lifeMax:0.75,rMin:2,rMax:5});
   spawnFx(pr.x,pr.y,8,"#3a322a",{spMin:30,spMax:120,grav:40,lifeMin:0.4,lifeMax:0.9,rMin:2,rMax:4});
@@ -1528,7 +1528,7 @@ function openStorage(){
   $("panel").classList.add("on");
 }
 function deposit(id,n){const moved=invRemove(id,n);G.storage[id]=(G.storage[id]||0)+moved;G.banked+=(ITEMS[id].val||0)*moved;save();}
-function withdraw(id,n=1){if(!G.storage[id])return;const take=Math.min(n,G.storage[id]);const added=invAdd(id,take);if(added>0){G.storage[id]-=added;if(G.storage[id]<=0)delete G.storage[id];save();}else toast("กระเป๋าเต็ม");}
+function withdraw(id,n=1){if(!G.storage[id])return;const take=Math.min(n,G.storage[id]);const added=invAdd(id,take);if(added>0){G.storage[id]-=added;if(G.storage[id]<=0)delete G.storage[id];G.banked=Math.max(0,G.banked-(ITEMS[id].val||0)*added);save();}else toast("กระเป๋าเต็ม");}
 // ask how many to withdraw (used by long-press on a box item)
 function withdrawAsk(id){const max=G.storage[id]||0;if(!max)return;const v=prompt("ถอนกี่ชิ้น? (มี "+max+")",String(max));if(v==null)return;const n=Math.max(0,Math.min(max,parseInt(v,10)||0));if(n>0){withdraw(id,n);openStorage();}}
 // tap = quick action, press-and-hold (~450ms) = alternate action (works on touch + mouse)
@@ -2667,6 +2667,11 @@ function drawFullMap(){
     ctx.beginPath();ctx.arc(ox+G.beacon.x*sc,oy+G.beacon.y*sc,6,0,7);ctx.fill();}
   // bots / horses
   for(const b of G.bots){ctx.fillStyle=b.col;ctx.beginPath();ctx.arc(ox+b.x*sc,oy+b.y*sc,4,0,7);ctx.fill();}
+  // online: server bots + other real players
+  if(window.NET&&NET.connected){
+    NET.botMap.forEach(b=>{ctx.fillStyle=b.col||"#8a8f96";ctx.beginPath();ctx.arc(ox+b.x*sc,oy+b.y*sc,4,0,7);ctx.fill();});
+    NET.players.forEach(e=>{ctx.fillStyle=e.col||"#4fb3d9";ctx.beginPath();ctx.arc(ox+e.x*sc,oy+e.y*sc,4.5,0,7);ctx.fill();ctx.strokeStyle="#000";ctx.lineWidth=1;ctx.stroke();});
+  }
   ctx.fillStyle="#b9935a";for(const h of G.horses){ctx.fillRect(ox+h.x*sc-1.5,oy+h.y*sc-1.5,3,3);}
   // player
   ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(ox+G.player.x*sc,oy+G.player.y*sc,5,0,7);ctx.fill();ctx.strokeStyle="#000";ctx.lineWidth=1.5;ctx.stroke();
@@ -2718,6 +2723,11 @@ function drawMini(){
   mctx.fillStyle="rgba(150,110,70,.9)";for(const h of G.horses){mctx.fillRect(h.x*msx-1,h.y*msy-1,2,2);}
   // bots (other survivors)
   for(const b of G.bots){mctx.fillStyle=b.col;mctx.beginPath();mctx.arc(b.x*msx,b.y*msy,2.4,0,7);mctx.fill();}
+  // online: server bots + other real players
+  if(window.NET&&NET.connected){
+    NET.botMap.forEach(b=>{mctx.fillStyle=b.col||"#8a8f96";mctx.beginPath();mctx.arc(b.x*msx,b.y*msy,2.4,0,7);mctx.fill();});
+    NET.players.forEach(e=>{mctx.fillStyle=e.col||"#4fb3d9";mctx.beginPath();mctx.arc(e.x*msx,e.y*msy,2.6,0,7);mctx.fill();mctx.strokeStyle="rgba(0,0,0,.6)";mctx.lineWidth=1;mctx.stroke();});
+  }
   // airdrop / beacon
   if(G.beacon.state&&G.beacon.state!=="none"&&G.beacon.state!=="carried"){
     const bl=(Math.floor(now()/300)%2)===0;mctx.fillStyle=G.beacon.state==="planted"?"#5fa05a":(bl?"#ffe08a":"#e0962e");

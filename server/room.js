@@ -124,10 +124,16 @@ export class GameRoom {
     if (m.t === "pos") {
       const nx = clamp(+m.x || p.x, 0, WORLD.W);
       const ny = clamp(+m.y || p.y, 0, WORLD.H);
-      // ignore absurd jumps but accept normal movement
+      // Ignore one-off absurd jumps but accept normal movement. Legit teleports
+      // (first sync after join, respawn at base) repeat the same far position on
+      // the next update ~100ms later, so a jump confirmed twice is accepted.
       if (Math.abs(nx - p.x) < POS_MAX_JUMP && Math.abs(ny - p.y) < POS_MAX_JUMP) {
-        p.x = nx; p.y = ny;
-      } else { p.x = nx; p.y = ny; } // first update / respawn: accept
+        p.x = nx; p.y = ny; p.pend = null;
+      } else if (p.pend && Math.abs(nx - p.pend.x) < POS_MAX_JUMP && Math.abs(ny - p.pend.y) < POS_MAX_JUMP) {
+        p.x = nx; p.y = ny; p.pend = null;
+      } else {
+        p.pend = { x: nx, y: ny };
+      }
       p.dir = m.dir === -1 ? -1 : 1;
       p.hp = clamp(+m.hp || 0, 0, 999);
       p.carrying = !!m.carrying;
@@ -282,7 +288,7 @@ export class GameRoom {
   }
 
   mobMove(mob, sx, sy, sp, dt) {
-    const pad = (MOBS[mob.kind] || MOBS.wolf).r; // collide using the body radius
+    const pad = (MOBS[mob.kind] || MOBS.deer).r; // collide using the body radius
     const nx = clamp(mob.x + sx * sp * dt, 40, WORLD.W - 40);
     const ny = clamp(mob.y + sy * sp * dt, 40, WORLD.H - 40);
     let mx = false, my = false;
@@ -325,7 +331,7 @@ export class GameRoom {
     }
 
     for (const mob of this.mobs) {
-      const st = MOBS[mob.kind] || MOBS.wolf;
+      const st = MOBS[mob.kind] || MOBS.deer;
       mob.aggroT = Math.max(0, (mob.aggroT || 0) - dt);
       // Passive by default: monsters roam their own biome and ignore players.
       // They only chase the player who provoked them (hit them), for a while.
