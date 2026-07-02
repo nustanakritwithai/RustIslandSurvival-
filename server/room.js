@@ -138,30 +138,46 @@ export class GameRoom {
       p.hp = clamp(+m.hp || 0, 0, 999);
       p.carrying = !!m.carrying;
       p.skin = m.skin | 0;
+      // death drops the beacon: a dead carrier can't keep it through respawn
+      if (p.hp <= 0 && this.beacon.state === "carried" && this.beacon.owner === ws.id) {
+        dropBeacon(this.beacon, p.x, p.y);
+        this.broadcast({ t: "event", kind: "beaconDown", data: { x: this.beacon.x, y: this.beacon.y } });
+      }
     } else if (m.t === "beacon") {
       const changed = handleBeaconAction(this.beacon, { id: ws.id, x: p.x, y: p.y }, m.action);
       if (changed) this.broadcastSnapshot();
     } else if (m.t === "beaconDmg") {
-      // only let non-owners chip a planted beacon (you can't break your own)
-      if (this.beacon.owner !== ws.id && damageBeacon(this.beacon, m.amt)) {
-        this.broadcast({ t: "event", kind: "landed", data: { x: this.beacon.x, y: this.beacon.y } });
+      // only non-owners standing next to a planted beacon can chip it, with a
+      // sane per-hit cap (clients can't nuke it remotely / instantly)
+      const amt = clamp(+m.amt || 0, 0, 60);
+      if (amt > 0 && this.beacon.owner !== ws.id && this.beacon.state === "planted" &&
+          dist2(this.beacon.x, this.beacon.y, p.x, p.y) < 90 * 90 &&
+          damageBeacon(this.beacon, amt)) {
+        this.broadcast({ t: "event", kind: "beaconDown", data: { x: this.beacon.x, y: this.beacon.y } });
       }
     } else if (m.t === "node") {
-      // a player harvested node #i; deplete it for everyone until it respawns
+      // a player harvested node #i; deplete it for everyone until it respawns.
+      // Rate-limited per player: a legit harvest takes several hits, so nodes
+      // can't finish faster than this (blocks deplete-the-island spam).
+      const nowT = Date.now();
+      if (p.lastNodeAt && nowT - p.lastNodeAt < 250) return;
       const i = m.i | 0;
       const rt = clamp(+m.rt || 30, 1, 600);
       if (i >= 0 && i < 20000 && !this.deadNodes.has(i)) {
+        p.lastNodeAt = nowT;
         this.deadNodes.set(i, Date.now() + rt * 1000);
         this.broadcast({ t: "event", kind: "node", data: { i, dead: true } });
       }
     } else if (m.t === "build") {
-      this.handleBuild(m);
+      this.handleBuild(m, p);
     } else if (m.t === "mobHit") {
-      // player-reported damage on a shared monster; server is authoritative on death
+      // player-reported damage on a shared monster; server is authoritative on
+      // death. Cap per-hit damage near the strongest legit weapon and require
+      // the reporter to be within max weapon range of the monster.
       const id = m.id | 0;
-      const dmg = clamp(+m.dmg || 0, 0, 500);
+      const dmg = clamp(+m.dmg || 0, 0, 120);
       const i = this.mobs.findIndex((x) => x.id === id);
-      if (i >= 0) {
+      if (i >= 0 && dist2(this.mobs[i].x, this.mobs[i].y, p.x, p.y) < 900 * 900) {
         this.mobs[i].hp -= dmg;
         this.mobs[i].aggroId = ws.id; // provoked: now it fights back and chases you
         this.mobs[i].aggroT = 8;
@@ -180,12 +196,14 @@ export class GameRoom {
 
   // Shared walls/doors so forts are visible to everyone (and, later, so
   // server-side monsters can path around them).
-  handleBuild(m) {
+  handleBuild(m, p) {
     if (m.op === "add") {
       const bt = m.bt === "door" ? "door" : m.bt === "wall" ? "wall" : null;
       if (!bt) return;
       const x = clamp(Math.round(+m.x || 0), 0, WORLD.W);
       const y = clamp(Math.round(+m.y || 0), 0, WORLD.H);
+      // must be placed next to the builder (grid snap is ~1 tile ahead)
+      if (!p || dist2(x, y, p.x, p.y) > 160 * 160) return;
       // no stacking on the same tile
       for (const b of this.builds.values()) {
         if (Math.abs(b.x - x) < 8 && Math.abs(b.y - y) < 8) return;
@@ -196,9 +214,13 @@ export class GameRoom {
       this.broadcast({ t: "event", kind: "build", data: { op: "add", b } });
     } else if (m.op === "del") {
       const id = m.id | 0;
-      if (this.builds.delete(id)) {
-        this.broadcast({ t: "event", kind: "build", data: { op: "del", id } });
-      }
+      const b = this.builds.get(id);
+      if (!b) return;
+      // demolish/chop happen adjacent; a thrown bomb reaches ~280px — beyond
+      // that the delete is not something an honest client can produce
+      if (!p || dist2(b.x, b.y, p.x, p.y) > 350 * 350) return;
+      this.builds.delete(id);
+      this.broadcast({ t: "event", kind: "build", data: { op: "del", id } });
     }
   }
 

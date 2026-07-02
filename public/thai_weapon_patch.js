@@ -68,7 +68,7 @@
       var isBowWeapon=hasAny(wid,["bow","ธนู"]), isGunWeapon=hasAny(wid,["pistol","handgun","revolver","ปืนสั้น","shotgun","ปืนลูกซอง","rifle","longrifle","assault_rifle","ปืนไรเฟิล"]);
       var heavy=hasAny(wid,["axe","hatchet","ขวาน","hammer","mallet","ค้อน","pickaxe","pick_axe","pick","stone_pick","stonepick","mining_pick","เสียม","จอบ","ที่ขุดหิน"]);
       var raise=heavy?swing*2.2:swing*1.5, drop=heavy?pAtk*15:pAtk*10;
-      var carry=!!(e&&(e.carrying||(typeof G!=="undefined"&&G.beacon&&G.beacon.state==="carried"&&e===G.player)));
+      var carry=!!(e&&(e.carrying||(typeof carryingBeacon==="function"&&carryingBeacon()&&e===G.player)));
       var y=sy-bob+hurt*1.3, skin=opt.skin||"#efc79d", shirt=opt.shirt||"#294d61", pant=opt.pant||"#2b2a28", lean=side?dirMul*.08:clamp(m.vx/120,-.12,.12);
       var bodyId=String(opt.body||"").toLowerCase(), headId=String(opt.head||"").toLowerCase();
       var ironBody=/iron|steel|เหล็ก/.test(bodyId), leatherBody=/leather|hide|หนัง/.test(bodyId), hasBody=!!opt.body;
@@ -82,6 +82,7 @@
       else { line(sx-7,y-1,sx-14-walk*4,y+8,4,skin); }
       if(side){ var shoulderX=sx+4*dirMul, shoulderY=y-2, handX, handY, toolAng; if(isBowWeapon||isGunWeapon){ handX=sx+13*dirMul; handY=y+1; line(shoulderX,shoulderY,handX,handY,4.2,skin); if(weapon){ toolAng=dirMul>0?.02:Math.PI-.02; drawThaiTool(handX,handY,toolAng,weapon); } } else { handX=sx+(8+raise*4)*dirMul; handY=y+5-raise*7+drop; if(atk>0){ handX=sx+(10+raise*7)*dirMul; handY=y-8-raise*6+drop*1.05; } line(shoulderX,shoulderY,handX,handY,4.2,skin); if(weapon){ toolAng=dirMul>0 ? (atk>0?(-1.25+pAtk*1.75):.18) : (atk>0?(Math.PI+1.25-pAtk*1.75):(Math.PI-.18)); drawThaiTool(handX,handY,toolAng,weapon); } } }
       else { var fx=sx+14+walkOpp*2, fy=y+8; if(isBowWeapon||isGunWeapon){ fx=sx+12; fy=y+2; line(sx+7,y-1,fx,fy,4,skin); if(weapon) drawThaiTool(fx,fy,.06,weapon); } else { if(atk>0){fx=sx+10+raise*4; fy=y-2-raise*4+drop*.7;} line(sx+7,y-1,fx,fy,4,skin); if(weapon){ var toolAng2=atk>0?(-.95+pAtk*1.35):.18; drawThaiTool(fx,fy,toolAng2,weapon); } } }
+      if(hurt>0){ ctx.globalAlpha=Math.min(.35,hurt*.35); ellipse(sx,y,10,13,"#ff5a4a"); ctx.globalAlpha=1; }
       if(carry){ fillRound(sx-9,y-36,18,12,4,"#8b5d36"); line(sx-6,y-33,sx+6,y-33,2,"#d4af37"); }
     }
 

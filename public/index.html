@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Last Short Island — MVP</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%9D%EF%B8%8F%3C/text%3E%3C/svg%3E">
 <style>
   :root{
     --sand:#d9c39a; --sand-d:#b89c6a;
@@ -924,6 +925,7 @@ function damagePlayer(amt,fromx,fromy){
   if(p.buffs&&p.buffs.guard)amt*=(1-BUFFS.guard.res);
   if(red>0){ // gear takes wear when it blocks
     if(G.equip.body&&ITEMS[G.equip.body.id].dur){G.equip.body.dur=(G.equip.body.dur??ITEMS[G.equip.body.id].dur)-0.5;if(G.equip.body.dur<=0){toast(ITEMS[G.equip.body.id].nm+" พังแล้ว!");G.equip.body=null;}}
+    if(G.equip.head&&ITEMS[G.equip.head.id].dur){G.equip.head.dur=(G.equip.head.dur??ITEMS[G.equip.head.id].dur)-0.5;if(G.equip.head.dur<=0){toast(ITEMS[G.equip.head.id].nm+" พังแล้ว!");G.equip.head=null;}}
   }
   p.hp=clamp(p.hp-amt,0,100);p.dmgT=0.3;sfx("hurt");
   if(amt>=0.5)spawnDmg(p.x,p.y-16,Math.round(amt),"#ff6a5a",true);
@@ -949,13 +951,13 @@ function recordRun(kind,data){
 }
 function dropEquipInto(bag){
   if(!CFG.dropEquipOnDeath)return;
-  for(const k in G.equip){const e=G.equip[k];if(e){bag.push({id:e.id,n:e.n});G.equip[k]=null;}}
+  for(const k in G.equip){const e=G.equip[k];if(e){bag.push({id:e.id,n:e.n,...(e.dur!=null?{dur:e.dur}:{})});G.equip[k]=null;}}
 }
 function die(){
   if(G.dead)return; G.dead=true; G.mounted=null; sfx("lose"); musicStop();
-  if(G.beacon.state==="carried"){G.beacon.state="crate";G.beacon.x=G.player.x;G.beacon.y=G.player.y;}
+  if(carryingBeacon()){G.beacon.state="crate";G.beacon.owner=null;G.beacon.x=G.player.x;G.beacon.y=G.player.y;}
   const p=G.player;
-  const bag=G.inv.map(s=>({id:s.id,n:s.n}));
+  const bag=G.inv.map(s=>({id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{})}));
   dropEquipInto(bag);
   const lostVal=bagValue(bag);
   G.inv.length=0;
@@ -965,14 +967,14 @@ function die(){
 function extract(){
   const items=G.inv.map(s=>({id:s.id,n:s.n}));
   const val=bagValue(items);
-  for(const s of G.inv){G.storage[s.id]=(G.storage[s.id]||0)+s.n;}
+  for(const s of G.inv){bankDur(s.id,s.dur);G.storage[s.id]=(G.storage[s.id]||0)+s.n;}
   G.banked+=val;G.inv.length=0; // gear stays equipped (you survived)
   G.bestRun=Math.max(G.bestRun,val);
   recordRun("extract",{gained:items,val});
 }
 function timeoutRound(){
   const p=G.player;
-  const bag=G.inv.map(s=>({id:s.id,n:s.n}));
+  const bag=G.inv.map(s=>({id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{})}));
   dropEquipInto(bag);
   const lostVal=bagValue(bag);
   G.inv.length=0;
@@ -983,14 +985,14 @@ function timeoutRound(){
 function winRound(){
   const items=G.inv.map(s=>({id:s.id,n:s.n}));
   const val=bagValue(items)+200; // big victory bonus
-  for(const s of G.inv)G.storage[s.id]=(G.storage[s.id]||0)+s.n;
+  for(const s of G.inv){bankDur(s.id,s.dur);G.storage[s.id]=(G.storage[s.id]||0)+s.n;}
   G.banked+=val;G.inv.length=0;G.bestRun=Math.max(G.bestRun,val);
   G.beacon={state:"none"};
   sfx("win");pushWinner(G.playerName||"คุณ",val);
   recordRun("win",{gained:items,val});
 }
 function botWins(bot){
-  const bag=G.inv.map(s=>({id:s.id,n:s.n}));dropEquipInto(bag);const lostVal=bagValue(bag);G.inv.length=0;
+  const bag=G.inv.map(s=>({id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{})}));dropEquipInto(bag);const lostVal=bagValue(bag);G.inv.length=0;
   if(bag.length)G.loot.push({x:G.player.x,y:G.player.y,items:bag,t:150,corpse:true});
   G.beacon={state:"none"};
   sfx("lose");pushWinner(bot.name,200);
@@ -1041,6 +1043,12 @@ function aggroPoint(){ // monsters converge on the beacon's holder/site, else th
   if(b.state==="carried"){ if(b.owner==="player")return{x:G.player.x,y:G.player.y};
     const bot=botById(b.owner); if(bot)return{x:bot.x,y:bot.y}; }
   return{x:G.player.x,y:G.player.y};
+}
+// true only when the LOCAL player is the one carrying the beacon (G.beacon is
+// shared state online, so state==="carried" alone means "somebody carries it")
+function carryingBeacon(){
+  const b=G.beacon;if(!b||b.state!=="carried")return false;
+  return (window.NET&&NET.connected)?b.owner===NET.id:b.owner==="player";
 }
 function beaconAction(){
   const b=G.beacon,p=G.player;
@@ -1140,7 +1148,7 @@ function resetLoadout(){
   G.inv.length=0;
   G.equip={hand:null,body:null,head:null,back:null,feet:null};
   G.hotbar=[null,null,null,null];
-  G.storage={};
+  G.storage={};G.storageDur={};
   if(G.player&&G.player.safe)G.player.safe=[null,null];
   G.buildings=G.buildings.filter(b=>b.net); // keep shared forts; clear only your own structures
   G.core=null;
@@ -1416,7 +1424,9 @@ function actPrimary(){
 }
 function takeLoot(l){
   let any=false;
-  for(let i=l.items.length-1;i>=0;i--){const it=l.items[i];const added=invAdd(it.id,it.n);if(added>0){it.n-=added;any=true;}if(it.n<=0)l.items.splice(i,1);}
+  for(let i=l.items.length-1;i>=0;i--){const it=l.items[i];
+    if(it.dur!=null){if(invAddSlot({id:it.id,n:it.n,dur:it.dur})){l.items.splice(i,1);any=true;}continue;} // keep wear on picked-up gear
+    const added=invAdd(it.id,it.n);if(added>0){it.n-=added;any=true;}if(it.n<=0)l.items.splice(i,1);}
   if(any){sfx("pickup");toast("เก็บของจากศพแล้ว");}else toast("กระเป๋าเต็ม");
   if(l.items.length===0){const idx=G.loot.indexOf(l);if(idx>=0)G.loot.splice(idx,1);}
 }
@@ -1527,8 +1537,17 @@ function openStorage(){
     bindHold(c, ()=>{withdraw(id,1);openStorage();}, ()=>{withdrawAsk(id);}); gb.appendChild(c);});
   $("panel").classList.add("on");
 }
-function deposit(id,n){const moved=invRemove(id,n);G.storage[id]=(G.storage[id]||0)+moved;G.banked+=(ITEMS[id].val||0)*moved;save();}
-function withdraw(id,n=1){if(!G.storage[id])return;const take=Math.min(n,G.storage[id]);const added=invAdd(id,take);if(added>0){G.storage[id]-=added;if(G.storage[id]<=0)delete G.storage[id];G.banked=Math.max(0,G.banked-(ITEMS[id].val||0)*added);save();}else toast("กระเป๋าเต็ม");}
+// track the worst durability banked per item id, so the box can't be used as a
+// free repair station (deposit worn tool -> withdraw pristine tool)
+function bankDur(id,dur){if(dur==null)return;G.storageDur=G.storageDur||{};G.storageDur[id]=Math.min(G.storageDur[id]??Infinity,dur);}
+function deposit(id,n){
+  if(ITEMS[id].dur){for(const s of G.inv)if(s.id===id&&s.dur!=null)bankDur(id,s.dur);}
+  const moved=invRemove(id,n);G.storage[id]=(G.storage[id]||0)+moved;G.banked+=(ITEMS[id].val||0)*moved;save();}
+function withdraw(id,n=1){if(!G.storage[id])return;const take=Math.min(n,G.storage[id]);const added=invAdd(id,take);if(added>0){G.storage[id]-=added;if(G.storage[id]<=0)delete G.storage[id];
+  const wd=G.storageDur?G.storageDur[id]:null;
+  if(wd!=null){let left=added;for(let i=G.inv.length-1;i>=0&&left>0;i--){const s=G.inv[i];if(s.id===id&&s.dur===ITEMS[id].dur){s.dur=wd;left--;}}}
+  if(!G.storage[id]&&G.storageDur)delete G.storageDur[id];
+  G.banked=Math.max(0,G.banked-(ITEMS[id].val||0)*added);save();}else toast("กระเป๋าเต็ม");}
 // ask how many to withdraw (used by long-press on a box item)
 function withdrawAsk(id){const max=G.storage[id]||0;if(!max)return;const v=prompt("ถอนกี่ชิ้น? (มี "+max+")",String(max));if(v==null)return;const n=Math.max(0,Math.min(max,parseInt(v,10)||0));if(n>0){withdraw(id,n);openStorage();}}
 // tap = quick action, press-and-hold (~450ms) = alternate action (works on touch + mouse)
@@ -1554,11 +1573,11 @@ function durBarHtml(slot){const d=ITEMS[slot.id];if(slot.dur==null||!d.dur)retur
 function hasHammer(){return (G.equip.hand&&ITEMS[G.equip.hand.id].tool==="hammer")||G.inv.some(s=>ITEMS[s.id].tool==="hammer");}
 function freeSafe(id){for(let i=0;i<SAFE_SLOTS;i++){const s=G.player.safe[i];if(!s||(s.id===id))return i;}return -1;}
 function toSafe(index){const s=G.inv[index];if(!s)return;const i=freeSafe(s.id);if(i<0){toast("ช่องปลอดภัยเต็ม");return;}
-  if(!G.player.safe[i])G.player.safe[i]={id:s.id,n:s.n};else G.player.safe[i].n+=s.n;
+  if(!G.player.safe[i])G.player.safe[i]={id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{})};else G.player.safe[i].n+=s.n;
   G.inv.splice(index,1);save();}
 function fromSafe(i){const s=G.player.safe[i];if(!s)return;if(invAddSlot({id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{})})){G.player.safe[i]=null;save();}else toast("กระเป๋าเต็ม");}
 function dropItem(index){const s=G.inv[index];if(!s)return;const p=G.player;
-  G.loot.push({x:p.x+rand(-12,12),y:p.y+18,items:[{id:s.id,n:s.n}],t:120});G.inv.splice(index,1);toast("ทิ้ง"+ITEMS[s.id].nm);}
+  G.loot.push({x:p.x+rand(-12,12),y:p.y+18,items:[{id:s.id,n:s.n,...(s.dur!=null?{dur:s.dur}:{})}],t:120});G.inv.splice(index,1);toast("ทิ้ง"+ITEMS[s.id].nm);}
 function splitStack(index){const s=G.inv[index];if(!s||s.n<2)return;if(G.inv.length>=invSlots()){toast("ไม่มีช่องว่าง");return;}
   const half=Math.floor(s.n/2);s.n-=half;G.inv.push({id:s.id,n:half});}
 function assignHotbar(id,slot){
@@ -1776,7 +1795,7 @@ function openDebug(){
     <h2>Debug · Balance</h2><div class="hint">ปรับค่าแล้วเห็นผลทันที (ยกเว้น "ความถี่ทรัพยากร" ต้องกดสร้างแผนที่ใหม่ · ความยาวรอบมีผลรอบถัดไป)</div>
     <div id="dbg-list"></div>
     <div style="display:flex;gap:8px;margin-top:6px">
-      <button class="mb" style="flex:1;height:34px" onclick="buildWorld();toast('สร้างแผนที่ใหม่แล้ว')">สร้างแผนที่ใหม่</button>
+      <button class="mb" style="flex:1;height:34px" onclick="debugRebuild()">สร้างแผนที่ใหม่</button>
       <button class="mb" style="flex:1;height:34px" onclick="resetCFG();openDebug()">รีเซ็ตค่า</button>
     </div>`;
   const wrap=$("dbg-list");
@@ -1792,6 +1811,11 @@ function openDebug(){
   $("panel").classList.add("on");
 }
 function resetCFG(){Object.assign(CFG,CFG_DEFAULT);toast("รีเซ็ตค่าบาลานซ์แล้ว");}
+// rebuilding with local RNG would desync node indices from the shared server world
+function debugRebuild(){
+  if(window.NET&&NET.connected){toast("ออนไลน์อยู่ — แผนที่ต้องตรงกับเซิร์ฟเวอร์ (รีเซ็ตเองทุกรอบ)");return;}
+  buildWorld();toast("สร้างแผนที่ใหม่แล้ว");
+}
 
 /* ---------- toast ---------- */
 const activeToasts=new Map(); // msg -> {el,to}
@@ -1831,14 +1855,14 @@ const store={
   }
 };
 async function save(){
-  const data={storage:G.storage,banked:G.banked,buildings:G.buildings.filter(b=>!b.bot&&!b.net),core:G.core,
+  const data={storage:G.storage,storageDur:G.storageDur||{},banked:G.banked,buildings:G.buildings.filter(b=>!b.bot&&!b.net),core:G.core,
     bestRun:G.bestRun,equip:G.equip,hotbar:G.hotbar,safe:G.player.safe,name:G.playerName,skin:G.skin};
   await store.set(KEY,JSON.stringify(data),false);
 }
 async function load(){
   const raw=await store.get(KEY,false); if(!raw)return;
   try{const d=JSON.parse(raw);
-    G.storage=d.storage||{};G.banked=d.banked||0;G.buildings=d.buildings||[];G.core=d.core||null;G.bestRun=d.bestRun||0;
+    G.storage=d.storage||{};G.storageDur=d.storageDur||{};G.banked=d.banked||0;G.buildings=d.buildings||[];G.core=d.core||null;G.bestRun=d.bestRun||0;
     if(d.equip)G.equip=Object.assign({hand:null,body:null,head:null,back:null,feet:null},d.equip);
     if(d.hotbar)G.hotbar=d.hotbar;
     if(typeof d.skin==="number")G.skin=d.skin;
@@ -1850,7 +1874,7 @@ async function saveHistory(){ await store.set(HKEY,JSON.stringify(G.history),fal
 async function loadHistory(){ const raw=await store.get(HKEY,false); if(!raw)return; try{G.history=JSON.parse(raw)||[];}catch(e){} }
 async function hardReset(){
   await store.del(KEY,false); await store.del(HKEY,false);
-  G.storage={};G.banked=0;G.buildings=[];G.core=null;G.bestRun=0;G.history=[];
+  G.storage={};G.storageDur={};G.banked=0;G.buildings=[];G.core=null;G.bestRun=0;G.history=[];
   G.equip={hand:null,body:null,head:null,back:null,feet:null};G.hotbar=[null,null,null,null];G.player.safe=[null,null];
   closePanel();toast("ล้าง save แล้ว");
 }
@@ -2022,19 +2046,19 @@ function readKeys(){
 /* ---------- update ---------- */
 let consumeCd=0;
 function update(dt){
-  if(G.paused||G.dead){ // still tick wolves a bit so corpse danger feels real? freeze when paused
+  if(window.NET&&NET.connected)netTickInterp(dt); // remotes keep moving even while a panel is open
+  if(G.paused||G.dead){ // freeze the local sim when paused
     if(G.dead){G.time+=dt/240;} // time keeps moving while dead screen waits
     return;
   }
   const p=G.player;
-  if(window.NET&&NET.connected)netTickInterp(dt); // smooth remote players/bots
   // movement
   const kv=readKeys();
   let ix=input.x,iy=input.y;
   if(kv){ix=kv.x;iy=kv.y;}
   if(Math.hypot(ix,iy)>0.05)p.aim=Math.atan2(iy,ix); // 360° facing for ranged aim
   const overweight=invWeight()>carryMaxEff();
-  let speed=140*(overweight?0.5:1)*(p.stam<=0?0.6:1)*(G.time>0.8||G.time<0.18?0.92:1)*(1+feetSpeed())*(G.mounted?1.9:1)*(G.beacon.state==="carried"?0.72:1)*((p.buffs&&p.buffs.swift)?1+BUFFS.swift.spd:1)*(p._sick?1-STATUS.sick.slow:1);
+  let speed=140*(overweight?0.5:1)*(p.stam<=0?0.6:1)*(G.time>0.8||G.time<0.18?0.92:1)*(1+feetSpeed())*(G.mounted?1.9:1)*(carryingBeacon()?0.72:1)*((p.buffs&&p.buffs.swift)?1+BUFFS.swift.spd:1)*(p._sick?1-STATUS.sick.slow:1);
   // weight gradient slow
   const wf=clamp(invWeight()/carryMaxEff(),0,1);speed*=(1-wf*0.35);
   p.vx+=( (ix*speed)-p.vx)*Math.min(1,dt*12);
@@ -2210,7 +2234,7 @@ function draw(){
     ctx.fillText(d.val,d.x-cam.x,d.y-cam.y-d.t*34);}
   ctx.globalAlpha=1;ctx.textAlign="left";
   // carried beacon over the player's head
-  if(G.beacon.state==="carried"){const px=p.x-cam.x,py=p.y-cam.y-(G.mounted?30:22);
+  if(carryingBeacon()){const px=p.x-cam.x,py=p.y-cam.y-(G.mounted?30:22);
     const pulse=0.5+0.5*Math.sin(now()/160);
     ctx.save();ctx.globalAlpha=.5*pulse;ctx.fillStyle="#5fa05a";ctx.beginPath();ctx.arc(px,py,12,0,7);ctx.fill();ctx.globalAlpha=1;
     ctx.font="15px sans-serif";ctx.textAlign="center";ctx.fillText("📡",px,py+5);ctx.textAlign="left";ctx.restore();}
@@ -2775,14 +2799,14 @@ function updateHUD(){
   const bcn=G.beacon;
   if(bcn.state==="incoming")pr=`📡 Airdrop กำลังตกกลางเกาะ — ไปรอเก็บ!`;
   else if(bcn.state==="crate")pr=`📦 ไปเก็บ <b>ตัวส่งสัญญาณ</b> แล้วปักในป้อม`;
-  else if(bcn.state==="carried")pr=`📡 แบกอยู่ — กด <b>ปัก📡</b> ในที่ป้องกันได้`;
+  else if(bcn.state==="carried")pr=carryingBeacon()?`📡 แบกอยู่ — กด <b>ปัก📡</b> ในที่ป้องกันได้`:`📡 คู่แข่งกำลังแบกตัวส่งสัญญาณ — ตามไปชิง!`;
   else if(bcn.state==="planted")pr=`🛡️ ป้องกัน 📡 (${Math.ceil(bcn.hp)}) จนเครื่องมารับ!`;
   else if(G.editMode){const near=nearestBuildEdit();
     pr=G.editMode==="move"?(near?`✋ กด <b>ยก</b> เพื่อยกขึ้น`:`โหมดย้าย — เดินไปใกล้สิ่งปลูกสร้าง`)
                           :(near?`🗑️ กด <b>รื้อ</b> เพื่อรื้อถอน`:`โหมดรื้อ — เดินไปใกล้สิ่งปลูกสร้าง`);}
   else if(G.buildMode)pr=`กำลังวาง <b>${ITEMS[G.buildMode].nm}</b> — กด "วาง"`;
   else{const l=nearestLoot();const n=nearestNode();const box=nearestStation("box");const fur=nearestStation("furnace");const wf=nearestWolf();const ex=nearestExtract();
-    if(wf)pr=`หมาป่าใกล้ — กด <b>ตี</b>`;
+    if(wf)pr=`สัตว์ป่าใกล้ — กด <b>ตี</b>`;
     else if(l)pr=`${l.corpse?"💀 ศพ":"🎒 ของ"} — กด <b>เก็บ</b>`;
     else if(box)pr=`กล่องเก็บของ — กด <b>เก็บ</b> เพื่อฝาก`;
     else if(fur)pr=`เตาหลอม — กด <b>เก็บ</b> เพื่อหลอม/ปรุง`;
