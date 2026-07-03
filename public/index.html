@@ -65,6 +65,7 @@
   @keyframes bp{50%{opacity:.45}}
   #mini{position:fixed;top:96px;right:10px;width:120px;height:120px;border:1px solid rgba(0,0,0,.5);
     border-radius:5px;background:rgba(12,11,8,.6);pointer-events:none;z-index:20;}
+  .iticon{width:1.15em;height:1.15em;vertical-align:-0.18em;}
   .cell .dur{position:absolute;left:3px;right:3px;bottom:2px;height:3px;border-radius:2px;background:rgba(0,0,0,.5);}
   .cell .dur i{display:block;height:100%;border-radius:2px;background:var(--good);}
 
@@ -1133,6 +1134,7 @@ function nearestEnemyMelee(){ // nearest wolf or bot (local or server) within me
   for(const w of G.wolves){const d=dist2(w.x,w.y,p.x,p.y);if(d<bd){bd=d;best=w;}}
   for(const b of G.bots){const d=dist2(b.x,b.y,p.x,p.y);if(d<bd){bd=d;best=b;}}
   if(window.NET&&NET.connected)NET.botMap.forEach(b=>{const d=dist2(b.x,b.y,p.x,p.y);if(d<bd){bd=d;best=b;}});
+  for(const h of G.horses){const d=dist2(h.x,h.y,p.x,p.y);if(d<bd){bd=d;best=h;best._horse=true;}}
   return best;
 }
 /* ---------- shared winner leaderboard ---------- */
@@ -1234,7 +1236,7 @@ function attack(){
   if(w){ensureHandWeapon();const hd2=handDef();if(hd2&&hd2.ranged){if(p.shootCd<=0)fireRanged();return;}
     const dmg=Math.round((handWeaponDmg()||2)*((G.player.buffs&&G.player.buffs.power)?1+BUFFS.power.dmg:1));
     if(w.netBot){netSend({t:"botHit",id:w.id,dmg});w.dmgT=0.25;} // server-owned rival: server adjudicates
-    else{w.hp-=dmg;w.dmgT=0.25;reportMobHit(w,dmg);
+    else{w.hp-=dmg;w.dmgT=0.25;reportMobHit(w,dmg);if(w._horse)spookHorse(w);
       const d=Math.hypot(w.x-p.x,w.y-p.y)||1;w.x+=(w.x-p.x)/d*22;w.y+=(w.y-p.y)/d*22;}
     sfx("hit");spawnDmg(w.x,w.y-12,dmg,"#ffe08a");addShake(2.5);
     p.stam=clamp(p.stam-4,0,100);
@@ -1309,6 +1311,7 @@ function boom(pr){
   for(const w of G.wolves){if(dist2(w.x,w.y,pr.x,pr.y)<r*r){w.hp-=pr.bd||60;w.dmgT=0.3;reportMobHit(w,pr.bd||60);}}
   for(const b of G.bots){if(b.hp>0&&dist2(b.x,b.y,pr.x,pr.y)<r*r){b.hp-=pr.bd||60;b.dmgT=0.3;}}
   if(window.NET&&NET.connected)NET.botMap.forEach(b=>{if(dist2(b.x,b.y,pr.x,pr.y)<r*r){netSend({t:"botHit",id:b.id,dmg:pr.bd||60});b.dmgT=0.3;}});
+  for(const h of G.horses){if(dist2(h.x,h.y,pr.x,pr.y)<r*r){h.hp-=pr.bd||60;h.dmgT=0.3;}}
   for(let bi=G.buildings.length-1;bi>=0;bi--){const bd=G.buildings[bi];
     if(dist2(bd.x,bd.y,pr.x,pr.y)<(r+8)*(r+8)){bd.hp-=(pr.bd||60)*1.2;
       if(bd.hp<=0){if(bd.net&&bd.nid!=null)netSend({t:"build",op:"del",id:bd.nid});G.buildings.splice(bi,1);}}}
@@ -1339,6 +1342,8 @@ function projTick(dt){
     if(!hitWolf&&window.NET&&NET.connected){let hb=null;NET.botMap.forEach(b=>{if(!hb&&dist2(b.x,b.y,pr.x,pr.y)<18*18)hb=b;});
       if(hb){netSend({t:"botHit",id:hb.id,dmg:pr.dmg});hb.dmgT=0.25;spawnDmg(hb.x,hb.y-12,pr.dmg,"#ffe08a");
         spawnFx(hb.x,hb.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;}}
+    if(!hitWolf)for(const h of G.horses){if(dist2(h.x,h.y,pr.x,pr.y)<20*20){h.hp-=pr.dmg;h.dmgT=0.25;h._horse=true;spookHorse(h);
+      spawnDmg(h.x,h.y-14,pr.dmg,"#ffe08a");spawnFx(h.x,h.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;break;}}
     if(hitWolf){G.projectiles.splice(i,1);}
     else if(pr.t>=pr.life||wall||oob){
       if(pr.dropId&&!wall&&!oob)G.loot.push({x:pr.x,y:pr.y,items:[{id:pr.dropId,n:1}],t:90,arrow:true});
@@ -1347,15 +1352,26 @@ function projTick(dt){
   }
 }
 /* ---------- horses & riding ---------- */
-function spawnHorse(x,y){G.horses.push({x,y,vx:0,vy:0,dir:1,wt:rand(1,3.5),tx:x,ty:y});}
+function spawnHorse(x,y){G.horses.push({x,y,vx:0,vy:0,dir:1,wt:rand(1,3.5),tx:x,ty:y,hp:30,maxhp:30,dmgT:0,fleeT:0});}
 function horseTick(dt){
-  for(const h of G.horses){
+  for(let i=G.horses.length-1;i>=0;i--){const h=G.horses[i];
+    h.dmgT=Math.max(0,(h.dmgT||0)-dt);h.fleeT=Math.max(0,(h.fleeT||0)-dt);
+    if(h.hp<=0){ // horses can be hunted like other animals
+      const drop=[{id:"raw_meat",n:ri(2,3)}];if(Math.random()<0.6)drop.push({id:"animal_hide",n:1});
+      G.loot.push({x:h.x,y:h.y,items:drop,t:60,wolf:true});
+      spawnFx(h.x,h.y,8,"#c4452f",{spMin:40,spMax:130,grav:140});
+      G.horses.splice(i,1);continue;
+    }
     h.wt-=dt;
     if(h.wt<=0){h.wt=rand(2,5);h.tx=clamp(h.x+rand(-180,180),60,W-60);h.ty=clamp(h.y+rand(-180,180),60,H-60);}
     const dx=h.tx-h.x,dy=h.ty-h.y,d=Math.hypot(dx,dy);
-    if(d>6){moveAvoid(h,dx/d,dy/d,46,dt,false);
+    if(d>6){moveAvoid(h,dx/d,dy/d,h.fleeT>0?150:46,dt,false);
       if(dx>2)h.dir=1;else if(dx<-2)h.dir=-1;}
   }
+}
+function spookHorse(h){ // a wounded horse bolts away from the player
+  h.fleeT=2.5;const a=Math.atan2(h.y-G.player.y,h.x-G.player.x);
+  h.tx=clamp(h.x+Math.cos(a)*260,60,W-60);h.ty=clamp(h.y+Math.sin(a)*260,60,H-60);h.wt=2.5;
 }
 function nearestHorse(){let best=null,bd=64*64;const p=G.player;for(const h of G.horses){const d=dist2(h.x,h.y,p.x,p.y);if(d<bd){bd=d;best=h;}}return best;}
 function toggleMount(){
@@ -1366,7 +1382,9 @@ function toggleMount(){
   if(!h){toast("ไม่มีม้าใกล้ ๆ");return;}
   G.horses.splice(G.horses.indexOf(h),1);G.mounted={};toast("ขึ้นม้า — วิ่งเร็วขึ้น!");
 }
-function rhorse(x,y,dir){
+function rhorse(x,y,dir,h){
+  if(h&&h.maxhp&&h.hp<h.maxhp){ctx.fillStyle="rgba(0,0,0,.5)";ctx.fillRect(x-13,y-26,26,3);
+    ctx.fillStyle="#b9935a";ctx.fillRect(x-13,y-26,26*clamp(h.hp/h.maxhp,0,1),3);}
   ctx.save();ctx.translate(x,y);ctx.scale(dir,1);
   ctx.fillStyle="rgba(0,0,0,.22)";ctx.beginPath();ctx.ellipse(0,13,17,5,0,0,7);ctx.fill();
   // legs
@@ -1389,6 +1407,8 @@ function rhorse(x,y,dir){
   ctx.fillStyle="#1a120c";ctx.beginPath();ctx.arc(20,-13,1.3,0,7);ctx.fill();
   ctx.beginPath();ctx.arc(27,-8,1,0,7);ctx.fill();
   ctx.restore();
+  if(h&&h.dmgT>0){ctx.globalAlpha=Math.min(.4,h.dmgT*1.4);ctx.fillStyle="#ff5a4a";
+    ctx.beginPath();ctx.ellipse(x,y,17,11,0,0,7);ctx.fill();ctx.globalAlpha=1;}
 }
 /* ---------- gun turret ---------- */
 function turretTick(dt){
@@ -1537,12 +1557,12 @@ function openStorage(){
   const gi=$("st-inv");
   if(!G.inv.length)gi.innerHTML='<div class="empty-note" style="grid-column:1/-1">กระเป๋าว่าง</div>';
   G.inv.forEach((s)=>{const d=ITEMS[s.id];const c=document.createElement("div");c.className="cell";
-    c.innerHTML=`<div class="ic">${d.ic}</div><div>${d.nm}</div><div class="ct">${s.n}</div>`;
+    c.innerHTML=`<div class="ic">${itemIcon(s.id)}</div><div>${d.nm}</div><div class="ct">${s.n}</div>`;
     c.onclick=()=>{deposit(s.id,s.n);openStorage();};gi.appendChild(c);});
   const gb=$("st-box");
   if(!list.length)gb.innerHTML='<div class="empty-note" style="grid-column:1/-1">กล่องว่าง</div>';
   list.forEach(([id,n])=>{const d=ITEMS[id];const c=document.createElement("div");c.className="cell";
-    c.innerHTML=`<div class="ic">${d.ic}</div><div>${d.nm}</div><div class="ct">${n}</div>`;
+    c.innerHTML=`<div class="ic">${itemIcon(id)}</div><div>${d.nm}</div><div class="ct">${n}</div>`;
     bindHold(c, ()=>{withdraw(id,1);openStorage();}, ()=>{withdrawAsk(id);}); gb.appendChild(c);});
   $("panel").classList.add("on");
 }
@@ -1576,6 +1596,83 @@ function bindHold(el,onTap,onHold){
 /* ---------- panels: inventory / equipment / craft / build ---------- */
 const $=id=>document.getElementById(id);
 function closePanel(){$("panel").classList.remove("on");G.paused=false;}
+/* ---------- custom item icons (canvas-drawn, tier-colored; emoji fallback) ---------- */
+const ICON_STYLE={
+  stone_axe:["axe","#9aa2a8"], copper_axe:["axe","#d98a3a"], iron_axe:["axe","#cfd6dd"],
+  stone_pick:["pick","#9aa2a8"], copper_pick:["pick","#d98a3a"], iron_pick:["pick","#cfd6dd"],
+  hammer:["hammer","#8e9398"],
+  wooden_spear:["spear","#c9b28a"], copper_spear:["spear","#d98a3a"], iron_spear:["spear","#cfd6dd"], obsidian_spear:["spear","#8f6fe0"],
+  machete:["machete","#d9dbd6"], thai_sword:["sword","#e8e9e4"],
+  simple_bow:["bow","#8a6237"], crossbow:["crossbow","#8a6237"],
+  pistol:["pistol","#5c6166"], shotgun:["shotgun","#71767b"], rifle:["rifle","#6f757b"], sniper:["sniper","#4a4f54"],
+  leather_armor:["vest","#8a6a3a"], iron_armor:["vest","#aab2b8"],
+  leather_helm:["helm","#8a6a3a"], iron_helm:["helm","#aab2b8"],
+  hide_boots:["boots","#7a5a34"], small_pack:["pack","#6e4f2c"],
+  bomb:["bomb","#2a2723"], arrow:["arrow","#c9b28a"], bullet:["bullet","#c9a53a"],
+};
+const _iconCache={};
+function drawItemIcon(g,kind,c){
+  const ln=(x1,y1,x2,y2,w,col)=>{g.strokeStyle=col;g.lineWidth=w;g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();};
+  const rrp=(x,y,w,h,r)=>{g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();};
+  const poly=(pts,col)=>{g.fillStyle=col;g.beginPath();g.moveTo(pts[0][0],pts[0][1]);for(let i=1;i<pts.length;i++)g.lineTo(pts[i][0],pts[i][1]);g.closePath();g.fill();};
+  g.lineCap="round";g.lineJoin="round";
+  const wood="#8a5f33",woodD="#5f4322",hi="rgba(255,255,255,.35)",sh="rgba(0,0,0,.25)";
+  if(kind==="axe"){ln(13,41,31,15,6,wood);ln(15,38,22,28,2,woodD);
+    poly([[25,6],[42,15],[39,27],[28,21]],c);poly([[40,17],[38,24],[33,20]],hi);}
+  else if(kind==="pick"){ln(13,41,31,15,6,wood);
+    g.strokeStyle=c;g.lineWidth=5.5;g.beginPath();g.moveTo(16,8);g.quadraticCurveTo(34,2,45,19);g.stroke();
+    g.strokeStyle=hi;g.lineWidth=2;g.beginPath();g.moveTo(22,7);g.quadraticCurveTo(33,4,40,12);g.stroke();}
+  else if(kind==="hammer"){ln(16,41,29,17,6,wood);g.fillStyle=c;rrp(20,5,20,13,3);g.fill();g.fillStyle=sh;g.fillRect(20,13,20,5);g.fillStyle=hi;g.fillRect(22,7,16,3);}
+  else if(kind==="spear"){ln(9,42,31,16,4.5,wood);poly([[29,18],[38,3],[45,12],[34,22]],c);poly([[36,7],[42,12],[35,17]],hi);}
+  else if(kind==="machete"){ln(11,41,19,32,5.5,woodD);g.fillStyle=c;g.beginPath();g.moveTo(19,31);g.lineTo(37,7);g.quadraticCurveTo(46,13,39,23);g.lineTo(25,37);g.closePath();g.fill();
+    ln(23,32,36,15,1.6,sh);}
+  else if(kind==="sword"){ln(13,39,20,32,4.5,woodD);ln(10,29,24,42,4,"#d4af37");
+    poly([[20,29],[38,5],[44,11],[26,34]],c);ln(25,29,38,12,1.4,sh);}
+  else if(kind==="bow"){g.strokeStyle=c;g.lineWidth=4;g.beginPath();g.arc(17,24,16,-1.15,1.15);g.stroke();
+    ln(23.5,9.5,23.5,38.5,1.6,"#e8e2d2");ln(7,24,35,24,2.6,"#c9b28a");poly([[35,24],[29,20],[29,28]],"#9aa4ab");}
+  else if(kind==="crossbow"){ln(24,12,24,42,5.5,wood);
+    g.strokeStyle="#6f4a2b";g.lineWidth=4.5;g.beginPath();g.moveTo(7,17);g.quadraticCurveTo(24,3,41,17);g.stroke();
+    ln(7,17,41,17,1.6,"#e8e2d2");ln(24,17,24,33,2.4,"#c9b28a");poly([[24,36],[20,30],[28,30]],"#9aa4ab");}
+  else if(kind==="pistol"){g.fillStyle="#44484d";rrp(10,16,26,9,3);g.fill();g.fillStyle="#5c6166";g.fillRect(34,18,6,5);
+    g.fillStyle=hi;g.fillRect(12,17,22,2.5);poly([[14,25],[24,25],[21,40],[12,40]],"#6b4a2a");}
+  else if(kind==="shotgun"){g.fillStyle=c;g.fillRect(14,17,30,5);g.fillStyle=wood;rrp(20,24,12,6,2);g.fill();
+    poly([[14,17],[5,32],[12,32],[18,22]],woodD);g.fillStyle=hi;g.fillRect(16,18,26,1.8);}
+  else if(kind==="rifle"){g.fillStyle=c;g.fillRect(16,18,28,4.5);g.fillStyle="#4a4f54";rrp(10,15,14,9,2);g.fill();
+    g.fillStyle="#3a3f44";g.fillRect(20,24,6,9);poly([[10,15],[3,30],[9,31],[13,22]],wood);g.fillStyle=hi;g.fillRect(18,19,24,1.6);}
+  else if(kind==="sniper"){g.fillStyle=c;g.fillRect(12,21,33,4);g.fillStyle="#1d2124";rrp(17,11,12,5,2);g.fill();
+    ln(20,16,20,21,2,"#1d2124");ln(26,16,26,21,2,"#1d2124");
+    poly([[12,21],[4,34],[10,35],[15,25]],woodD);g.fillStyle="#3a3f44";g.fillRect(24,25,5,8);}
+  else if(kind==="vest"){g.fillStyle=c;rrp(11,9,26,31,7);g.fill();
+    g.fillStyle=sh;g.beginPath();g.ellipse(24,9,8,5,0,0,7);g.fill();
+    ln(17,13,17,37,2.2,sh);ln(31,13,31,37,2.2,sh);ln(13,24,35,24,2.2,sh);g.fillStyle=hi;g.fillRect(20,13,3,6);}
+  else if(kind==="helm"){g.fillStyle=c;g.beginPath();g.arc(24,26,15,Math.PI,0);g.closePath();g.fill();
+    g.fillStyle=hi;g.beginPath();g.arc(19,22,5,Math.PI,0);g.fill();
+    g.fillStyle=sh;g.fillRect(7,25,34,3);g.fillStyle=c;g.fillRect(7,27,34,4);}
+  else if(kind==="boots"){g.fillStyle=c;rrp(15,8,12,22,3);g.fill();rrp(15,26,22,10,4);g.fill();
+    g.fillStyle="#3a2c1a";g.fillRect(15,33,23,4);g.fillStyle=hi;g.fillRect(17,10,3,16);}
+  else if(kind==="pack"){g.fillStyle=c;rrp(11,11,26,28,7);g.fill();
+    g.fillStyle="rgba(255,255,255,.14)";rrp(11,11,26,11,7);g.fill();
+    ln(17,13,17,37,2.4,sh);ln(31,13,31,37,2.4,sh);g.fillStyle="#d4af37";g.fillRect(21,22,6,5);}
+  else if(kind==="bomb"){g.fillStyle=c;g.beginPath();g.arc(23,28,13,0,7);g.fill();
+    g.fillStyle=hi;g.beginPath();g.arc(18,23,4,0,7);g.fill();
+    g.strokeStyle="#8a6a3a";g.lineWidth=2.5;g.beginPath();g.moveTo(29,17);g.quadraticCurveTo(33,11,38,9);g.stroke();
+    g.fillStyle="#ffca4a";g.beginPath();g.arc(39,8,3.4,0,7);g.fill();g.fillStyle="#fff3c0";g.beginPath();g.arc(39,8,1.6,0,7);g.fill();}
+  else if(kind==="arrow"){ln(10,38,34,14,2.8,c);poly([[34,14],[42,4],[38,18]],"#9aa4ab");
+    ln(12,36,8,32,2.4,"#c4452f");ln(12,36,16,40,2.4,"#c4452f");}
+  else if(kind==="bullet"){g.fillStyle=c;rrp(18,20,12,20,3);g.fill();
+    g.fillStyle="#8a8f96";g.beginPath();g.ellipse(24,18,6,8,0,Math.PI,0);g.fill();
+    g.fillStyle=hi;g.fillRect(20,22,3,14);}
+}
+function itemIcon(id){
+  const st=ICON_STYLE[id];
+  if(!st)return (ITEMS[id]&&ITEMS[id].ic)||"❓";
+  if(!_iconCache[id]){
+    const c=document.createElement("canvas");c.width=c.height=48;
+    drawItemIcon(c.getContext("2d"),st[0],st[1]);
+    _iconCache[id]=c.toDataURL();
+  }
+  return `<img class="iticon" src="${_iconCache[id]}" alt="">`;
+}
 const EQUIP_SLOTS=[{k:"hand",nm:"มือ",ph:"✋"},{k:"body",nm:"ลำตัว",ph:"👕"},{k:"head",nm:"หัว",ph:"🧢"},{k:"back",nm:"หลัง",ph:"🎒"},{k:"feet",nm:"เท้า",ph:"👟"}];
 function durBarHtml(slot){const d=ITEMS[slot.id];if(slot.dur==null||!d.dur)return"";const f=clamp(slot.dur/d.dur,0,1);
   return `<div class="dur"><i style="width:${f*100}%;background:${f<0.3?'#c4452f':f<0.6?'#e0962e':'#5fa05a'}"></i></div>`;}
@@ -1617,7 +1714,7 @@ function openHotbarPicker(slot){
   if(!ids.length)wrap.innerHTML='<div class="empty-note" style="grid-column:1/-1">ยังไม่มีของที่ผูกได้ — คราฟต์อาวุธ/อาหาร/ของวางก่อน</div>';
   ids.forEach(id=>{const d=ITEMS[id];const c=document.createElement("div");c.className="cell";
     const kind=d.place?"วาง":d.throw?"ขว้าง":d.heal?"ฟื้น":d.food?"กิน":d.drink?"ดื่ม":"ถือ";
-    c.innerHTML=`<div class="ic">${d.ic}</div><div>${d.nm}</div><div class="ctag">${kind}</div>`;
+    c.innerHTML=`<div class="ic">${itemIcon(id)}</div><div>${d.nm}</div><div class="ctag">${kind}</div>`;
     c.onclick=()=>{assignHotbar(id,slot);closePanel();};wrap.appendChild(c);});
   $("panel").classList.add("on");
 }
@@ -1646,7 +1743,7 @@ function openInv(){
   // equipment
   const eq=$("iv-eq");
   EQUIP_SLOTS.forEach(es=>{const e=G.equip[es.k];const c=document.createElement("div");
-    if(e){const d=ITEMS[e.id];c.className="cell";c.innerHTML=`<div class="ic">${d.ic}</div><div>${d.nm}</div>${durBarHtml(e)}`;c.onclick=()=>{unequip(es.k);openInv();};}
+    if(e){const d=ITEMS[e.id];c.className="cell";c.innerHTML=`<div class="ic">${itemIcon(e.id)}</div><div>${d.nm}</div>${durBarHtml(e)}`;c.onclick=()=>{unequip(es.k);openInv();};}
     else{c.className="cell empty";c.innerHTML=`<div class="ic" style="opacity:.5">${es.ph}</div><div style="opacity:.6">${es.nm}</div>`;}
     eq.appendChild(c);});
   // stats
@@ -1654,7 +1751,7 @@ function openInv(){
   // safe slots
   const sf=$("iv-safe");
   for(let i=0;i<SAFE_SLOTS;i++){const s=G.player.safe[i];const c=document.createElement("div");
-    if(s){const d=ITEMS[s.id];c.className="cell safe";c.innerHTML=`<div class="ic">${d.ic}</div><div>${d.nm}</div>${s.n>1?`<div class="ct">${s.n}</div>`:""}`;c.onclick=()=>{fromSafe(i);openInv();};}
+    if(s){const d=ITEMS[s.id];c.className="cell safe";c.innerHTML=`<div class="ic">${itemIcon(s.id)}</div><div>${d.nm}</div>${s.n>1?`<div class="ct">${s.n}</div>`:""}`;c.onclick=()=>{fromSafe(i);openInv();};}
     else{c.className="cell safe empty";c.innerHTML="ว่าง";}
     sf.appendChild(c);}
   // inventory grid
@@ -1662,7 +1759,7 @@ function openInv(){
   if(!G.inv.length)mn.innerHTML='<div class="empty-note" style="grid-column:1/-1">ยังไม่มีของ — ออกไปเก็บไม้กับหินก่อน</div>';
   G.inv.forEach((s,idx)=>{const d=ITEMS[s.id];const c=document.createElement("div");c.className="cell";
     const tag=(d.food||d.drink)?`<div class="ctag good">${d.food?"กิน":"ดื่ม"}</div>`:(d.slot?`<div class="ctag">${d.slot==="hand"?"ถือ":"สวม"}</div>`:"");
-    c.innerHTML=`<div class="ic">${d.ic}</div><div>${d.nm}</div>${s.n>1?`<div class="ct">${s.n}</div>`:""}${tag}${durBarHtml(s)}`;
+    c.innerHTML=`<div class="ic">${itemIcon(s.id)}</div><div>${d.nm}</div>${s.n>1?`<div class="ct">${s.n}</div>`:""}${tag}${durBarHtml(s)}`;
     c.onclick=()=>openItemActions(idx);
     mn.appendChild(c);});
   $("panel").classList.add("on");
@@ -1680,7 +1777,7 @@ function openItemActions(index){
   acts.push(["🗑️ ทิ้ง",`dropItem(${index});openInv()`]);
   const el=$("sheet");
   el.innerHTML=`<span class="x" onclick="closePanel()">×</span>
-    <h2 style="font-size:15px">${d.ic} ${d.nm}${s.n>1?" ×"+s.n:""}</h2>
+    <h2 style="font-size:15px">${itemIcon(s.id)} ${d.nm}${s.n>1?" ×"+s.n:""}</h2>
     <div class="hint">${d.tool?"เครื่องมือ":d.weapon?"อาวุธ":d.slot?"อุปกรณ์สวมใส่":d.food?"อาหาร":d.drink?"เครื่องดื่ม":"ทรัพยากร"} · น้ำหนัก ${d.w} กก. · มูลค่า ${d.val}${d.armor?` · เกราะ ${d.armor}`:""}${d.weapon?` · ดาเมจ ${d.weapon}`:""}</div>
     <div id="ia-list" style="display:flex;flex-direction:column;gap:8px"></div>
     <div style="margin-top:12px;text-align:center"><span class="minib" onclick="openInv()">← กลับ</span></div>`;
@@ -1734,7 +1831,7 @@ function openCraft(forceStation){
     else if(r.station==="table"&&(r.tier||1)>ttier)need=`<span style="color:var(--amber)"> 🔒 Lv${r.tier}</span>`;
     else if(sm)need=`<span style="opacity:.6"> ${sm.ic}${r.station==="table"&&r.tier?" Lv"+r.tier:""}</span>`;
     const row=document.createElement("div");row.className="recipe";
-    row.innerHTML=`<div class="ic">${d.ic}</div>
+    row.innerHTML=`<div class="ic">${itemIcon(r.out)}</div>
       <div class="meta"><div class="nm">${d.nm}${r.n>1?" ×"+r.n:""}${need}</div>
         <div class="cost">${costHtml}</div></div>`;
     const btn=document.createElement("button");btn.textContent="คราฟต์";
@@ -1768,7 +1865,7 @@ function openBuild(){
   const wrap=$("bd-list");
   placeables.forEach(id=>{
     const d=ITEMS[id];const have=invCount(id);const row=document.createElement("div");row.className="recipe";
-    row.innerHTML=`<div class="ic">${d.ic}</div><div class="meta"><div class="nm">${d.nm}</div>
+    row.innerHTML=`<div class="ic">${itemIcon(id)}</div><div class="meta"><div class="nm">${d.nm}</div>
       <div class="cost">มีอยู่ ${have} ชิ้น ${id!=="territory_core"&&!G.core?'<span class="miss">· ต้องมีเขตแดนก่อน</span>':''}</div></div>`;
     const btn=document.createElement("button");btn.textContent="เลือกวาง";
     btn.disabled=have<1||(id!=="territory_core"&&!G.core);
@@ -1940,17 +2037,32 @@ function tryConsume(){
 
 /* ---------- collision with walls/doors ---------- */
 function blockedAt(x,y){
+  const online=window.NET&&NET.connected;
   for(const b of G.buildings){
-    if(b.type==="wall"||(b.type==="door"&&!b.open)){
+    // a door only lets ME through when it's open AND mine — an enemy door that
+    // looks open (its owner is near) still blocks me
+    const passable=b.type==="door"&&b.open&&(!b.net||(online&&b.owner===NET.id));
+    if(b.type==="wall"||(b.type==="door"&&!passable)){
       if(Math.abs(x-b.x)<22&&Math.abs(y-b.y)<22)return true;
     }
   }
   return false;
 }
 function autoDoors(){
-  const pts=[{x:G.player.x,y:G.player.y}];
-  if(window.NET&&NET.connected)NET.players.forEach(e=>pts.push({x:e.x,y:e.y})); // shared doors open for any player
-  for(const b of G.buildings){if(b.type==="door"){b.open=pts.some(pt=>dist2(b.x,b.y,pt.x,pt.y)<60*60);}}
+  // doors only open for their OWNER: mine open when I'm near; someone else's
+  // door opens (visually) when its owner is near, but stays solid for me
+  const online=window.NET&&NET.connected;
+  for(const b of G.buildings){
+    if(b.type!=="door")continue;
+    const mine=!b.net||(online&&b.owner===NET.id);
+    let open=false;
+    if(mine)open=dist2(b.x,b.y,G.player.x,G.player.y)<60*60;
+    else if(online&&b.owner){
+      const e=NET.players.get(b.owner)||NET.botMap.get(b.owner);
+      if(e)open=dist2(b.x,b.y,e.x,e.y)<60*60;
+    }
+    b.open=open;
+  }
 }
 
 /* ---------- input ---------- */
@@ -2213,7 +2325,7 @@ function draw(){
   for(const e of ents){const o=e.o,sx=o.x-cam.x,sy=o.y-cam.y;
     if(e.t===0)rnode(o,sx,sy);
     else if(e.t===1)rbuild(o,sx,sy);
-    else if(e.t===2)rhorse(sx,sy,o.dir);
+    else if(e.t===2)rhorse(sx,sy,o.dir,o);
     else if(e.t===3)rwolf(o,sx,sy);
     else if(e.t===4)rbot(o,sx,sy);
     else{ if(G.mounted){rhorse(sx,sy,p.dir);rplayer(sx,sy-7);}else rplayer(sx,sy); }
@@ -2645,7 +2757,7 @@ function drawHotbar(){
   for(let i=0;i<HOTBAR;i++){const id=G.hotbar[i];
     if(id){const d=ITEMS[id];const have=invCount(id);const eq=G.equip.hand&&G.equip.hand.id===id;
       const badge=(d.food||d.drink||d.heal||d.throw||d.place)?(have>0?`<span class="c">${have}</span>`:`<span class="c" style="color:#c4452f">0</span>`):(eq?`<span class="c" style="color:var(--good)">●</span>`:"");
-      html+=`<div class="hb" onclick="useHotbar(${i})"><span class="n">${i+1}</span>${d.ic}${badge}</div>`;}
+      html+=`<div class="hb" onclick="useHotbar(${i})"><span class="n">${i+1}</span>${itemIcon(id)}${badge}</div>`;}
     else html+=`<div class="hb empty" onclick="useHotbar(${i})"><span class="n">${i+1}</span></div>`;
   }
   $("hotbar").innerHTML=html;
@@ -2858,7 +2970,7 @@ function hide(id){$(id).classList.add("off");}
 function fmtItems(items){
   if(!items||!items.length)return '<div style="opacity:.45;font-size:11px;margin:4px 0">— ไม่มี —</div>';
   return '<div style="display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin:5px 0">'+
-    items.map(it=>`<span style="background:#15130e;border:1px solid #38332a;border-radius:5px;padding:3px 6px;font-size:11px">${ITEMS[it.id].ic} ${ITEMS[it.id].nm} ×${it.n}</span>`).join("")+'</div>';
+    items.map(it=>`<span style="background:#15130e;border:1px solid #38332a;border-radius:5px;padding:3px 6px;font-size:11px">${itemIcon(it.id)} ${ITEMS[it.id].nm} ×${it.n}</span>`).join("")+'</div>';
 }
 function statRow(e){
   const mm=Math.floor(e.survived/60),ss=String(e.survived%60).padStart(2,"0");

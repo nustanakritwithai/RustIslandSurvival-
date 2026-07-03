@@ -65,7 +65,7 @@
   function netLose(winnerName){ var p=G.player, bag=G.inv.map(function(s){var o={id:s.id,n:s.n};if(s.dur!=null)o.dur=s.dur;if(s.loaded!=null)o.loaded=s.loaded;return o;}); if(typeof dropEquipInto==="function")dropEquipInto(bag); var lostVal=(typeof bagValue==="function")?bagValue(bag):0; G.inv.length=0; if(bag.length)G.loot.push({x:p.x,y:p.y,items:bag,t:150,corpse:true}); G.beacon={state:"none"}; if(typeof sfx==="function")sfx("lose"); if(typeof recordRun==="function")recordRun(winnerName?"botwin":"timeout",{lost:bag,lostVal:lostVal,winner:winnerName||""}); }
   function setNodeDead(i,dead){ if(typeof G==="undefined"||!G.nodes||i==null)return; var n=G.nodes[i]; if(!n)return; if(dead)n.dead=true; else{n.dead=false;n.hp=n.maxhp;} }
   function applyDeadNodes(list){ list=Array.isArray(list)?list:[]; for(var i=0;i<list.length;i++)setNodeDead(list[i],true); }
-  function addNetBuild(b){ if(typeof G==="undefined"||!G.buildings||!b)return; if(G.buildings.some(function(x){return x.nid===b.id;}))return; var pend=G.buildings.find(function(x){return x.net&&x.pending&&x.nid==null&&Math.abs(x.x-b.x)<8&&Math.abs(x.y-b.y)<8;}); if(pend){pend.nid=b.id;pend.pending=false;return;} G.buildings.push({type:b.t,x:b.x,y:b.y,hp:b.hp,maxhp:b.hp,open:false,ori:b.o||0,net:true,nid:b.id}); }
+  function addNetBuild(b){ if(typeof G==="undefined"||!G.buildings||!b)return; if(G.buildings.some(function(x){return x.nid===b.id;}))return; var pend=G.buildings.find(function(x){return x.net&&x.pending&&x.nid==null&&Math.abs(x.x-b.x)<8&&Math.abs(x.y-b.y)<8;}); if(pend){pend.nid=b.id;pend.pending=false;pend.owner=b.owner;return;} G.buildings.push({type:b.t,x:b.x,y:b.y,hp:b.hp,maxhp:b.hp,open:false,ori:b.o||0,owner:b.owner,net:true,nid:b.id}); }
   function delNetBuild(id){ if(typeof G==="undefined"||!G.buildings)return; var i=G.buildings.findIndex(function(x){return x.nid===id;}); if(i>=0)G.buildings.splice(i,1); }
   function applyBuilds(list){ list=Array.isArray(list)?list:[]; for(var i=0;i<list.length;i++)addNetBuild(list[i]); }
   function applyWorldSeed(seed){ if(seed==null||typeof G==="undefined"||typeof regenWorld!=="function")return; if(G.worldSeed===seed)return; regenWorld(seed); }
@@ -150,7 +150,29 @@
       if(o&&o.name){ctx.fillStyle="#cdbfa3";ctx.font="8px sans-serif";ctx.textAlign="center";ctx.fillText(o.name,sx,sy-32-lift);ctx.textAlign="left";}
       if(o&&o.hp!=null&&o.maxhp&&o.hp<o.maxhp){ctx.fillStyle="rgba(0,0,0,.5)";ctx.fillRect(sx-12,sy-28-lift,24,3);ctx.fillStyle="#5fd17a";ctx.fillRect(sx-12,sy-28-lift,24*Math.max(0,Math.min(1,o.hp/o.maxhp)),3);}};
     rwolf=function(o,sx,sy){drawAnimal(o,sx,sy);};
-    rhorse=function(sx,sy,dir){drawBuffalo({kind:"buffalo",x:sx+cam.x,y:sy+cam.y,vx:20*Math.sin(T()/300)},sx,sy);};
+    function drawHorse(sx,sy,dir,h){
+      var m=motion(h||{}),ph=h?m.phase:T()/150,mv=h?m.moving:false,run=mv?1:.12;
+      var bob=mv?Math.abs(Math.sin(ph))*1.6:Math.sin(T()/800+sx)*.4;
+      if(h&&h.maxhp&&h.hp<h.maxhp){ctx.fillStyle="rgba(0,0,0,.5)";ctx.fillRect(sx-13,sy-30,26,3);ctx.fillStyle="#b9935a";ctx.fillRect(sx-13,sy-30,26*Math.max(0,Math.min(1,h.hp/h.maxhp)),3);}
+      ovalShadow(sx,sy+14,19,6.5,.2);
+      ctx.save();ctx.translate(sx,0);ctx.scale(dir<0?-1:1,1);ctx.translate(-sx,0);
+      var l1=Math.sin(ph)*5*run,l2=Math.sin(ph+Math.PI)*5*run;
+      line(sx-11,sy+3-bob,sx-12+l1,sy+21,3.4,"#4e3522");line(sx-4,sy+4-bob,sx-5+l2,sy+22,3.4,"#5b3f28");
+      line(sx+5,sy+4-bob,sx+6+l2,sy+22,3.4,"#4e3522");line(sx+11,sy+3-bob,sx+12+l1,sy+21,3.4,"#5b3f28");
+      var g=ctx.createLinearGradient(sx,sy-16-bob,sx,sy+12);g.addColorStop(0,"#a0713f");g.addColorStop(1,"#6b4a2e");
+      ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(sx-1,sy-2-bob,15,8.5,0,0,7);ctx.fill();
+      ctx.beginPath();ctx.moveTo(sx+8,sy-6-bob);ctx.quadraticCurveTo(sx+15,sy-17-bob,sx+18,sy-20-bob);ctx.lineTo(sx+23,sy-15-bob);ctx.quadraticCurveTo(sx+17,sy-6-bob,sx+12,sy+1-bob);ctx.closePath();ctx.fill();
+      ctx.beginPath();ctx.ellipse(sx+21,sy-19-bob,6,4.4,.35,0,7);ctx.fill();
+      ctx.beginPath();ctx.ellipse(sx+26.5,sy-16-bob,3.2,2.5,.4,0,7);ctx.fill();
+      ctx.fillStyle="#3e2a18";ctx.beginPath();ctx.moveTo(sx+18,sy-23-bob);ctx.lineTo(sx+20,sy-28-bob);ctx.lineTo(sx+22,sy-22-bob);ctx.closePath();ctx.fill();
+      line(sx+17,sy-21-bob,sx+9,sy-7-bob,3,"#3e2a18");
+      ctx.strokeStyle="#3e2a18";ctx.lineWidth=3;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(sx-15,sy-5-bob);ctx.quadraticCurveTo(sx-22,sy+1,sx-20,sy+11+Math.sin(ph)*2);ctx.stroke();
+      dot(sx+22,sy-20-bob,1.2,"#1a120c");dot(sx+28,sy-15.5-bob,.9,"#1a120c");
+      line(sx+19,sy-13-bob,sx+24,sy-11.5-bob,1.1,"rgba(40,25,12,.5)");
+      ctx.restore();
+      if(h&&h.dmgT>0){ctx.globalAlpha=Math.min(.4,h.dmgT*1.4);ctx.fillStyle="#ff5a4a";ctx.beginPath();ctx.ellipse(sx,sy,17,11,0,0,7);ctx.fill();ctx.globalAlpha=1;}
+    }
+    rhorse=function(sx,sy,dir,h){drawHorse(sx,sy,dir==null?1:dir,h);};
     rnode=function(n,sx,sy){var k=resourceText(n); if(/water|pond|lake|คลอง|บึง|น้ำ/.test(k))return drawLotusPatch(sx,sy,.92); if(isBanana(k))return drawBananaTree(sx,sy,1); if(isHerb(k))return drawHerbNode(sx,sy,1); if(isBamboo(k))return drawBambooClump(sx,sy,.95); if(isTree(k))return drawThaiTallTree(sx,sy,1,false); if(isFiber(k))return drawFiberNode(sx,sy,1); if(isOre(k)){var col=k.indexOf("copper")>=0||k.indexOf("ทองแดง")>=0?"#d99252":k.indexOf("sulfur")>=0||k.indexOf("กำมะถัน")>=0?"#d9d24a":"#c7d6e2";return drawOreNode(sx,sy,1,col);} if(isStone(k))return drawStoneNode(sx,sy,1); return drawFiberNode(sx,sy,.85);};
     rbuild=function(b,sx,sy){var k=resourceText(b);ovalShadow(sx,sy+14,b&&b.ori?10:22,8,.18);if(k.indexOf("wall")>=0){ctx.save();ctx.translate(sx,sy);if(b&&b.ori)ctx.rotate(Math.PI/2);for(var i=-18;i<=18;i+=9)line(i,-15,i+Math.sin(T()/800+i)*.7,11,5,"#8c6235");line(-24,-8,24,-8,4,"#b68545");line(-24,5,24,5,4,"#b68545");ctx.restore();return;}if(k.indexOf("door")>=0){ctx.save();ctx.translate(sx,sy);if(b&&b.ori)ctx.rotate(Math.PI/2);if(b&&b.open)ctx.globalAlpha=.4;fillRound(-18,-18,36,32,4,"#6d4a2b");line(-13,-18,-13,14,2,"rgba(0,0,0,.25)");line(3,-18,3,14,2,"rgba(0,0,0,.25)");ctx.globalAlpha=1;if(!(b&&b.open))dot(10,-2,2,"#d8b56a");ctx.restore();return;}if(k.indexOf("core")>=0){fillRound(sx-10,sy-18,20,30,4,"#8b5d36");ctx.fillStyle="#d4af37";ctx.beginPath();ctx.moveTo(sx,sy-28);ctx.lineTo(sx+10,sy-17);ctx.lineTo(sx-10,sy-17);ctx.closePath();ctx.fill();dot(sx,sy-4,5+Math.sin(T()/260)*1.2,"#ffdd77");return;}if(k.indexOf("box")>=0||k.indexOf("storage")>=0){fillRound(sx-16,sy-9,32,22,5,"#9b6b3f");ctx.strokeStyle="#d0a46c";ctx.lineWidth=2;ctx.strokeRect(sx-13,sy-6,26,16);return;}if(k.indexOf("furnace")>=0){fillRound(sx-14,sy-14,28,28,8,"#7a3f24");dot(sx,sy+2,6,"#241610");dot(sx,sy+2,3+Math.sin(T()/120),"#ff9d3a");return;}if(k.indexOf("craft")>=0||k.indexOf("table")>=0){fillRound(sx-20,sy-14,40,10,4,"#9a6a3a");fillRound(sx-15,sy-4,5,18,2,"#6b4b2e");fillRound(sx+10,sy-4,5,18,2,"#6b4b2e");return;}fillRound(sx-12,sy-12,24,24,8,"#8c6235");};
     if(typeof toast==="function")setTimeout(function(){toast("🔨 แก้ท่าฟาด ขวาน/ค้อน และจังหวะเดินแล้ว");},900);

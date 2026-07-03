@@ -183,7 +183,7 @@ export class GameRoom {
         this.broadcast({ t: "event", kind: "node", data: { i, dead: true } });
       }
     } else if (m.t === "build") {
-      this.handleBuild(m, p);
+      this.handleBuild(m, p, ws.id);
     } else if (m.t === "mobHit") {
       // player-reported damage on a shared monster; server is authoritative on
       // death. Cap per-hit damage near the strongest legit weapon and require
@@ -237,7 +237,7 @@ export class GameRoom {
 
   // Shared walls/doors so forts are visible to everyone (and, later, so
   // server-side monsters can path around them).
-  handleBuild(m, p) {
+  handleBuild(m, p, pid) {
     if (m.op === "add") {
       const bt = m.bt === "door" ? "door" : m.bt === "wall" ? "wall" : null;
       if (!bt) return;
@@ -250,7 +250,8 @@ export class GameRoom {
         if (Math.abs(b.x - x) < 8 && Math.abs(b.y - y) < 8) return;
       }
       if (this.builds.size > 4000) return; // hard cap
-      const b = { id: this._bid++, t: bt, x, y, hp: bt === "wall" ? 300 : 200, o: m.o ? 1 : 0 };
+      // owner matters for doors: only the builder's client walks through theirs
+      const b = { id: this._bid++, t: bt, x, y, hp: bt === "wall" ? 300 : 200, o: m.o ? 1 : 0, owner: pid };
       this.builds.set(b.id, b);
       this.broadcast({ t: "event", kind: "build", data: { op: "add", b } });
     } else if (m.op === "del") {
@@ -325,14 +326,14 @@ export class GameRoom {
   }
 
   // Bots place real shared structures so every player sees their base grow.
-  addBotBuild(t, x, y, o = 0) {
+  addBotBuild(t, x, y, o = 0, owner = null) {
     x = clamp(Math.round(x / 40) * 40, 80, WORLD.W - 80);
     y = clamp(Math.round(y / 40) * 40, 80, WORLD.H - 80);
     for (const b of this.builds.values()) {
       if (Math.abs(b.x - x) < 8 && Math.abs(b.y - y) < 8) return;
     }
     if (this.builds.size > 4000) return;
-    const b = { id: this._bid++, t, x, y, hp: t === "wall" ? 300 : 200, o };
+    const b = { id: this._bid++, t, x, y, hp: t === "wall" ? 300 : 200, o, owner };
     this.builds.set(b.id, b);
     this.broadcast({ t: "event", kind: "build", data: { op: "add", b } });
   }
@@ -356,7 +357,7 @@ export class GameRoom {
         const R = 40, pts = [[-R, -R], [0, -R], [R, -R], [R, 0], [R, R], [-R, R], [-R, 0], [0, R]];
         const o = pts[bot.fortStep];
         const vert = o[1] === 0 ? 1 : 0; // side pieces stand vertical, top/bottom lie flat
-        this.addBotBuild(bot.fortStep === 7 ? "door" : "wall", bcn.x + o[0], bcn.y + o[1], vert);
+        this.addBotBuild(bot.fortStep === 7 ? "door" : "wall", bcn.x + o[0], bcn.y + o[1], vert, bot.id);
         // shove rival bots out of the ring so they can't get walled in with it
         for (const rb of this.bots) {
           if (rb === bot) continue;
