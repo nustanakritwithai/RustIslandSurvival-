@@ -80,7 +80,12 @@
       if(up){ line(sx-7,y-1,sx-13-walk*3,y+8,4,skin); line(sx+7,y-1,sx+13+walk*3,y+8,4,skin); }
       else if(side){ line(sx-3*dirMul,y-1,sx-10*dirMul-walk*2,y+8,4,skin); }
       else { line(sx-7,y-1,sx-14-walk*4,y+8,4,skin); }
-      if(side){ var shoulderX=sx+4*dirMul, shoulderY=y-2, handX, handY, toolAng; if(isBowWeapon||isGunWeapon){ handX=sx+13*dirMul; handY=y+1; line(shoulderX,shoulderY,handX,handY,4.2,skin); if(weapon){ toolAng=dirMul>0?.02:Math.PI-.02; drawThaiTool(handX,handY,toolAng,weapon); } } else { handX=sx+(8+raise*4)*dirMul; handY=y+5-raise*7+drop; if(atk>0){ handX=sx+(10+raise*7)*dirMul; handY=y-8-raise*6+drop*1.05; } line(shoulderX,shoulderY,handX,handY,4.2,skin); if(weapon){ toolAng=dirMul>0 ? (atk>0?(-1.25+pAtk*1.75):.18) : (atk>0?(Math.PI+1.25-pAtk*1.75):(Math.PI-.18)); drawThaiTool(handX,handY,toolAng,weapon); } } }
+      if(side){ // draw the front arm + tool as if facing right, mirror the canvas for left
+        ctx.save(); if(dirMul<0){ ctx.translate(sx,0); ctx.scale(-1,1); ctx.translate(-sx,0); }
+        var shoulderX=sx+4, shoulderY=y-2, handX, handY, toolAng;
+        if(isBowWeapon||isGunWeapon){ handX=sx+13; handY=y+1; line(shoulderX,shoulderY,handX,handY,4.2,skin); if(weapon)drawThaiTool(handX,handY,.02,weapon); }
+        else { handX=sx+(8+raise*4); handY=y+5-raise*7+drop; if(atk>0){ handX=sx+(10+raise*7); handY=y-8-raise*6+drop*1.05; } line(shoulderX,shoulderY,handX,handY,4.2,skin); if(weapon){ toolAng=atk>0?(-1.25+pAtk*1.75):.18; drawThaiTool(handX,handY,toolAng,weapon); } }
+        ctx.restore(); }
       else { var fx=sx+14+walkOpp*2, fy=y+8; if(isBowWeapon||isGunWeapon){ fx=sx+12; fy=y+2; line(sx+7,y-1,fx,fy,4,skin); if(weapon) drawThaiTool(fx,fy,.06,weapon); } else { if(atk>0){fx=sx+10+raise*4; fy=y-2-raise*4+drop*.7;} line(sx+7,y-1,fx,fy,4,skin); if(weapon){ var toolAng2=atk>0?(-.95+pAtk*1.35):.18; drawThaiTool(fx,fy,toolAng2,weapon); } } }
       if(hurt>0){ ctx.globalAlpha=Math.min(.35,hurt*.35); ellipse(sx,y,10,13,"#ff5a4a"); ctx.globalAlpha=1; }
       if(carry){ fillRound(sx-9,y-36,18,12,4,"#8b5d36"); line(sx-6,y-33,sx+6,y-33,2,"#d4af37"); }

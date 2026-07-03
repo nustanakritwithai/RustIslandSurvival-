@@ -1448,12 +1448,12 @@ function doEdit(){
     nudgeOutOfWalls();save();
   }else if(G.editMode==="move"){
     if(t.kind==="core"){G.core=null;invAdd("territory_core",1);G.buildMode="territory_core";}
-    else{const id=BUILD_ITEM[t.b.type];if(t.b.net&&t.b.nid!=null)netSend({t:"build",op:"del",id:t.b.nid});G.buildings.splice(t.idx,1);if(id){invAdd(id,1);G.buildMode=id;}}
+    else{const id=BUILD_ITEM[t.b.type];if(t.b.net&&t.b.nid!=null)netSend({t:"build",op:"del",id:t.b.nid});if(t.b.ori!=null)G.buildOri=t.b.ori;G.buildings.splice(t.idx,1);if(id){invAdd(id,1);G.buildMode=id;}}
     G.editMode=null;nudgeOutOfWalls();save();toast("ยกขึ้นแล้ว — กด \"วาง\" เพื่อวางตำแหน่งใหม่");
   }
 }
 function startBuild(id){
-  G.editMode=null;G.buildDir=null;
+  G.editMode=null;G.buildOri=G.buildOri||0;
   if(invCount(id)<1){toast("ไม่มี "+ITEMS[id].nm);return;}
   if(ITEMS[id].place!=="core" && !G.core){toast("ต้องวางเสาเขตแดนก่อน");return;}
   G.buildMode=id;closePanel();toast("แตะ \"วาง\" เพื่อวางใน"+(ITEMS[id].place==="core"?"จุดที่ยืน":"เขตแดน")+" · ⟳ หมุนทิศได้");
@@ -1465,24 +1465,22 @@ function setEditMode(m){
   if(G.editMode==="demolish")toast("โหมดรื้อถอน — เดินไปใกล้สิ่งปลูกสร้างแล้วกด \"รื้อ\" (วัสดุคืนกระเป๋า)");
   else if(G.editMode==="move")toast("โหมดย้าย — เดินไปใกล้สิ่งปลูกสร้างแล้วกด \"ยก\" เพื่อยกขึ้น");
 }
-// while placing, ⟳ locks the ghost to a cardinal side of the player and cycles it
-const BUILD_DIRS=[[1,0],[0,1],[-1,0],[0,-1]], BUILD_DIR_NM=["→ ขวา","↓ ล่าง","← ซ้าย","↑ บน"];
-function aimDirIndex(){const a=G.player.aim||0,c=Math.cos(a),s=Math.sin(a);
-  if(Math.abs(c)>=Math.abs(s))return c>=0?0:2; return s>=0?1:3;}
+// ⟳ while placing rotates the PIECE itself: walls/doors flip horizontal <-> vertical
+function canRotateBuild(id){const d=ITEMS[id];return d&&(d.place==="wall"||d.place==="door");}
 function rotateBuild(){
   if(!G.buildMode)return;
-  G.buildDir=((G.buildDir==null?aimDirIndex():G.buildDir)+1)%4;
-  sfx("ui");toast("หมุนตำแหน่งวาง: "+BUILD_DIR_NM[G.buildDir]);
+  if(!canRotateBuild(G.buildMode)){toast("ชิ้นนี้หมุนไม่ได้");return;}
+  G.buildOri=G.buildOri?0:1;
+  sfx("ui");toast("หมุน"+ITEMS[G.buildMode].nm+": "+(G.buildOri?"แนวตั้ง ↕":"แนวนอน ↔"));
 }
 function buildTarget(){
   const p=G.player,def=ITEMS[G.buildMode];
   if(def&&def.place==="core")return {x:p.x,y:p.y};
   const GR=40;
-  // place one tile toward the locked ⟳ direction, else where you're aiming
+  // place one tile in the cardinal direction you're aiming (up/down/left/right)
+  const a=p.aim||0,cx=Math.cos(a),cy=Math.sin(a);
   let ox=0,oy=0;
-  if(G.buildDir!=null){ox=BUILD_DIRS[G.buildDir][0];oy=BUILD_DIRS[G.buildDir][1];}
-  else{const a=p.aim||0,cx=Math.cos(a),cy=Math.sin(a);
-    if(Math.abs(cx)>=Math.abs(cy)) ox=cx>=0?1:-1; else oy=cy>=0?1:-1;}
+  if(Math.abs(cx)>=Math.abs(cy)) ox=cx>=0?1:-1; else oy=cy>=0?1:-1;
   let px=Math.round((p.x+GR*ox)/GR)*GR;
   let py=Math.round((p.y+GR*oy)/GR)*GR;
   if(Math.abs(px-p.x)<30 && Math.abs(py-p.y)<30){ px+=GR*ox; py+=GR*oy; }
@@ -1512,16 +1510,17 @@ function placeBuild(){
   const isFort=(def.place==="wall"||def.place==="door");
   const sharedFort=isFort&&window.NET&&NET.connected; // walls/doors are shared online
   G.buildings.push({type:def.place,x:px,y:py,hp:def.place==="wall"?300:200,open:false,
+    ...(isFort?{ori:G.buildOri||0}:{}),
     ...(def.place==="turret"?{ammo:0,cd:0,angle:0}:{}),
     ...(def.place==="table"?{tier:1}:{}),
     ...(sharedFort?{net:true,pending:true,nid:null}:{})});
   invRemove(id,1);
-  if(sharedFort)netSend({t:"build",op:"add",bt:def.place,x:px,y:py});
+  if(sharedFort)netSend({t:"build",op:"add",bt:def.place,x:px,y:py,o:G.buildOri||0});
   if(def.place==="wall"||def.place==="door")nudgeOutOfWalls(); // safety: never trap the player
   // keep placing if it's a stackable structure and you still have more
   if(def.stack>1 && invCount(id)>0){sfx("build");toast("วาง"+def.nm+" (เหลือ "+invCount(id)+") — วางต่อได้เลย");save();return;}
   sfx("build");toast("วาง"+def.nm+"แล้ว");
-  G.buildMode=null;G.buildDir=null;save();
+  G.buildMode=null;save();
 }
 
 /* ---------- storage ---------- */
@@ -2018,7 +2017,7 @@ function setupInput(){
     if(k==="i"){$("panel").classList.contains("on")?closePanel():openInv();}
     if(k==="c"){$("panel").classList.contains("on")?closePanel():openCraft();}
     if(k==="b"){$("panel").classList.contains("on")?closePanel():openBuild();}
-    if(k==="escape"){G.buildMode=null;G.buildDir=null;G.editMode=null;closePanel();}
+    if(k==="escape"){G.buildMode=null;G.editMode=null;closePanel();}
     if(k>="1"&&k<="4"){useHotbar(+k-1);}
   });
   window.addEventListener("keyup",e=>{keys[e.key.toLowerCase()]=false;});
@@ -2254,11 +2253,13 @@ function draw(){
     ctx.restore();}
   // build ghost
   if(G.buildMode){const def=ITEMS[G.buildMode];const tg=buildTarget();const gx=tg.x-cam.x,gy=tg.y-cam.y;
-    const sz=(def.place==="wall"||def.place==="door")?40:(def.place==="core"?24:26);
+    const fort=def.place==="wall"||def.place==="door";
+    const gw=fort?(G.buildOri?16:44):(def.place==="core"?24:26);
+    const gh=fort?(G.buildOri?44:16):(def.place==="core"?24:26);
     const okPlace = def.place==="core" || (G.core && dist2(tg.x,tg.y,G.core.x,G.core.y)<=G.core.r*G.core.r);
     ctx.globalAlpha=.45;ctx.fillStyle=okPlace?"#5fa05a":"#c4452f";
-    ctx.fillRect(gx-sz/2,gy-sz/2,sz,sz);
-    ctx.globalAlpha=.9;ctx.strokeStyle=okPlace?"#5fa05a":"#c4452f";ctx.lineWidth=2;ctx.strokeRect(gx-sz/2,gy-sz/2,sz,sz);
+    ctx.fillRect(gx-gw/2,gy-gh/2,gw,gh);
+    ctx.globalAlpha=.9;ctx.strokeStyle=okPlace?"#5fa05a":"#c4452f";ctx.lineWidth=2;ctx.strokeRect(gx-gw/2,gy-gh/2,gw,gh);
     ctx.globalAlpha=1;}
   // ---- atmosphere: warm dawn/dusk tint, night, fireflies, vignette ----
   const t=G.time;
@@ -2429,9 +2430,9 @@ function bambooWall(x,y,door){
   ctx.beginPath();ctx.moveTo(x-19,y+9);ctx.lineTo(x+19,y+10);ctx.stroke();
 }
 function rbuild(b,x,y){
-  if(b.type==="wall"||b.type==="door"){ctx.fillStyle="rgba(0,0,0,.18)";ctx.beginPath();ctx.ellipse(x,y+18,19,5,0,0,7);ctx.fill();}
-  if(b.type==="wall"){bambooWall(x,y,false);}
-  else if(b.type==="door"){ctx.globalAlpha=b.open?0.4:1;bambooWall(x,y,true);ctx.globalAlpha=1;if(!b.open){ctx.fillStyle="#e0962e";ctx.beginPath();ctx.arc(x+12,y,2.5,0,7);ctx.fill();}}
+  if(b.type==="wall"||b.type==="door"){ctx.fillStyle="rgba(0,0,0,.18)";ctx.beginPath();ctx.ellipse(x,y+18,b.ori?8:19,5,0,0,7);ctx.fill();}
+  if(b.type==="wall"){ctx.save();ctx.translate(x,y);if(b.ori)ctx.rotate(Math.PI/2);bambooWall(0,0,false);ctx.restore();}
+  else if(b.type==="door"){ctx.save();ctx.translate(x,y);if(b.ori)ctx.rotate(Math.PI/2);ctx.globalAlpha=b.open?0.4:1;bambooWall(0,0,true);ctx.globalAlpha=1;if(!b.open){ctx.fillStyle="#e0962e";ctx.beginPath();ctx.arc(12,0,2.5,0,7);ctx.fill();}ctx.restore();}
   else if(b.type==="box"){ctx.fillStyle="#8a6a3a";ctx.fillRect(x-13,y-11,26,22);ctx.strokeStyle="#5b4326";ctx.strokeRect(x-13,y-11,26,22);ctx.fillStyle="#5b4326";ctx.fillRect(x-13,y-3,26,3);}
   else if(b.type==="furnace"){ctx.fillStyle="#574c44";ctx.fillRect(x-15,y-16,30,30);ctx.fillStyle="#e0962e";ctx.fillRect(x-7,y-2,14,12);ctx.fillStyle="#ffd27a";ctx.fillRect(x-4,y+2,8,8);}
   else if(b.type==="table"){ctx.fillStyle="#8a6a3a";ctx.fillRect(x-16,y-12,32,18);ctx.strokeStyle="#5b4326";ctx.strokeRect(x-16,y-12,32,18);
@@ -2810,7 +2811,7 @@ function updateHUD(){
   else if(G.editMode){const near=nearestBuildEdit();
     pr=G.editMode==="move"?(near?`✋ กด <b>ยก</b> เพื่อยกขึ้น`:`โหมดย้าย — เดินไปใกล้สิ่งปลูกสร้าง`)
                           :(near?`🗑️ กด <b>รื้อ</b> เพื่อรื้อถอน`:`โหมดรื้อ — เดินไปใกล้สิ่งปลูกสร้าง`);}
-  else if(G.buildMode)pr=`กำลังวาง <b>${ITEMS[G.buildMode].nm}</b> — กด <b>วาง</b> · <b>⟳</b> หมุนทิศ${G.buildDir!=null?` (${BUILD_DIR_NM[G.buildDir]})`:""}`;
+  else if(G.buildMode)pr=`กำลังวาง <b>${ITEMS[G.buildMode].nm}</b> — กด <b>วาง</b>${canRotateBuild(G.buildMode)?` · <b>⟳</b> หมุน (${G.buildOri?"↕ แนวตั้ง":"↔ แนวนอน"})`:""}`;
   else{const l=nearestLoot();const n=nearestNode();const box=nearestStation("box");const fur=nearestStation("furnace");const wf=nearestWolf();
     if(wf)pr=`สัตว์ป่าใกล้ — กด <b>ตี</b>`;
     else if(l)pr=`${l.corpse?"💀 ศพ":"🎒 ของ"} — กด <b>เก็บ</b>`;
@@ -2821,8 +2822,8 @@ function updateHUD(){
   const pe=$("prompt");if(pr){pe.innerHTML=pr;pe.classList.add("on");}else pe.classList.remove("on");
   // action button label
   $("a-act").textContent=G.editMode?(G.editMode==="move"?"ยก":"รื้อ"):G.buildMode?"วาง":"เก็บ";
-  // rotate button (only while placing a directional build)
-  $("a-rot").style.display=(G.buildMode&&ITEMS[G.buildMode].place!=="core")?"flex":"none";
+  // rotate button (only while placing a piece that has an orientation)
+  $("a-rot").style.display=(G.buildMode&&canRotateBuild(G.buildMode))?"flex":"none";
   // beacon action button (pick up crate / plant / relocate)
   const bb=$("a-beacon");const b=G.beacon;
   const beaconMine=(window.NET&&NET.connected)?(b.owner===NET.id):(b.owner==="player");
