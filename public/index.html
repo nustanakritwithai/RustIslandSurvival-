@@ -1071,6 +1071,7 @@ function beaconAction(){
   const online=window.NET&&NET.connected;
   const mine=online?(b.owner===NET.id):(b.owner==="player");
   if(b.state==="crate"){
+    if(wallBetween(p.x,p.y,b.x,b.y)){toast("มีกำแพงขวางอยู่ — ต้องเจาะเข้าไปก่อน");return;}
     if(online){netSend({t:"beacon",action:"grab",x:p.x,y:p.y});}
     else if(dist2(b.x,b.y,p.x,p.y)<100*100){b.state="carried";b.owner="player";toast("ถือ 📡 — ช้าลง+มอนสเตอร์รุม! ไปปักในป้อม");}
     return;
@@ -1087,6 +1088,7 @@ function beaconAction(){
     return;
   }
   if(b.state==="planted"&&!mine&&dist2(b.x,b.y,p.x,p.y)<54*54){ // smash an enemy's planted beacon to knock it loose
+    if(wallBetween(p.x,p.y,b.x,b.y)){toast("มีกำแพงขวางอยู่ — ทุบกำแพงเข้าไปก่อน");return;}
     const dmg=14+(handWeaponDmg()||0);damageBeacon(dmg);p.atkT=0.22;p.stam=clamp(p.stam-3,0,100);sfx("hit");
     spawnFx(b.x,b.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});
     return;
@@ -2169,6 +2171,26 @@ function blockedAt(x,y){
   }
   return false;
 }
+// Is a wall/door blocking the straight line between two points? Used to stop
+// grabbing/smashing a beacon through a fort wall, and to hide things behind walls.
+function wallBetween(ax,ay,bx,by){
+  const bs=G.buildings;if(!bs||!bs.length)return false;
+  const minx=Math.min(ax,bx)-24,maxx=Math.max(ax,bx)+24,miny=Math.min(ay,by)-24,maxy=Math.max(ay,by)+24;
+  const cand=[];
+  for(const w of bs){if((w.type==="wall"||w.type==="door")&&w.x>=minx&&w.x<=maxx&&w.y>=miny&&w.y<=maxy)cand.push(w);}
+  if(!cand.length)return false;
+  const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy)||1,steps=Math.min(48,Math.ceil(len/14));
+  for(let i=1;i<steps;i++){const t=i/steps,x=ax+dx*t,y=ay+dy*t;
+    for(const w of cand)if(Math.abs(x-w.x)<20&&Math.abs(y-w.y)<20)return true;}
+  return false;
+}
+// beacon hidden from the local player? (enemy beacon walled off behind a fort)
+function beaconHidden(){
+  const b=G.beacon;if(!b||b.state==="none"||b.state==="carried")return false;
+  const mine=(window.NET&&NET.connected)?(b.owner===NET.id):(b.owner==="player");
+  if(mine)return false;
+  return wallBetween(G.player.x,G.player.y,b.x,b.y);
+}
 function autoDoors(){
   // doors only open for their OWNER: mine open when I'm near; someone else's
   // door opens (visually) when its owner is near, but stays solid for me
@@ -2439,8 +2461,9 @@ function draw(){
   for(const w of G.wolves){if(cull(w.x,w.y,40))continue;ents.push({y:w.y,t:3,o:w});}
   for(const b of G.bots){if(cull(b.x,b.y,50))continue;ents.push({y:b.y,t:4,o:b});}
   if(window.NET&&NET.connected){
-    NET.botMap.forEach(e=>{if(!cull(e.x,e.y,50))ents.push({y:e.y,t:4,o:e});});
-    NET.players.forEach(e=>{if(!cull(e.x,e.y,50))ents.push({y:e.y,t:4,o:e});});
+    // don't render rivals sealed behind a wall from you (no seeing into a fort)
+    NET.botMap.forEach(e=>{if(!cull(e.x,e.y,50)&&!wallBetween(p.x,p.y,e.x,e.y))ents.push({y:e.y,t:4,o:e});});
+    NET.players.forEach(e=>{if(!cull(e.x,e.y,50)&&!wallBetween(p.x,p.y,e.x,e.y))ents.push({y:e.y,t:4,o:e});});
   }
   ents.push({y:p.y,t:5,o:p});
   ents.sort((a,b)=>a.y-b.y);
@@ -2891,6 +2914,7 @@ function drawHotbar(){
 }
 function drawBeacon(){
   const b=G.beacon;if(b.state==="none"||b.state==="carried")return;
+  if(beaconHidden())return; // enemy's beacon sealed behind a fort wall — you can't see it
   const sx=b.x-cam.x,sy=b.y-cam.y;
   if(b.state==="incoming"){
     const pulse=0.5+0.5*Math.sin(now()/150);
@@ -2933,7 +2957,7 @@ function drawFullMap(){
   for(const e of G.extracts){ctx.fillStyle=e.type==="safe"?"#5fd17a":"#e0962e";
     ctx.beginPath();ctx.arc(ox+e.x*sc,oy+e.y*sc,5,0,7);ctx.fill();}
   // beacon / airdrop
-  if(G.beacon.state&&G.beacon.state!=="none"&&G.beacon.state!=="carried"){ctx.fillStyle=G.beacon.state==="planted"?"#5fa05a":"#ffe08a";
+  if(G.beacon.state&&G.beacon.state!=="none"&&G.beacon.state!=="carried"&&!beaconHidden()){ctx.fillStyle=G.beacon.state==="planted"?"#5fa05a":"#ffe08a";
     ctx.beginPath();ctx.arc(ox+G.beacon.x*sc,oy+G.beacon.y*sc,6,0,7);ctx.fill();}
   // bots / horses
   for(const b of G.bots){ctx.fillStyle=b.col;ctx.beginPath();ctx.arc(ox+b.x*sc,oy+b.y*sc,4,0,7);ctx.fill();}
@@ -2999,7 +3023,7 @@ function drawMini(){
     NET.players.forEach(e=>{mctx.fillStyle=e.col||"#4fb3d9";mctx.beginPath();mctx.arc(e.x*msx,e.y*msy,2.6,0,7);mctx.fill();mctx.strokeStyle="rgba(0,0,0,.6)";mctx.lineWidth=1;mctx.stroke();});
   }
   // airdrop / beacon
-  if(G.beacon.state&&G.beacon.state!=="none"&&G.beacon.state!=="carried"){
+  if(G.beacon.state&&G.beacon.state!=="none"&&G.beacon.state!=="carried"&&!beaconHidden()){
     const bl=(Math.floor(now()/300)%2)===0;mctx.fillStyle=G.beacon.state==="planted"?"#5fa05a":(bl?"#ffe08a":"#e0962e");
     mctx.beginPath();mctx.arc(G.beacon.x*msx,G.beacon.y*msy,3.5,0,7);mctx.fill();}
   // core ring
@@ -3066,7 +3090,10 @@ function updateHUD(){
   // beacon action button (pick up crate / plant / relocate)
   const bb=$("a-beacon");const b=G.beacon;
   const beaconMine=(window.NET&&NET.connected)?(b.owner===NET.id):(b.owner==="player");
-  if(b.state==="crate"&&dist2(b.x,b.y,p.x,p.y)<100*100){bb.style.display="flex";bb.textContent="เก็บ📡";}
+  // a wall between you and the beacon blocks grabbing/smashing it (own beacon exempt)
+  const walled=!beaconMine&&(b.state==="crate"||b.state==="planted")&&wallBetween(p.x,p.y,b.x,b.y);
+  if(walled)bb.style.display="none";
+  else if(b.state==="crate"&&dist2(b.x,b.y,p.x,p.y)<100*100){bb.style.display="flex";bb.textContent="เก็บ📡";}
   else if(b.state==="carried"&&beaconMine){bb.style.display="flex";bb.textContent="ปัก📡";}
   else if(b.state==="planted"&&beaconMine&&dist2(b.x,b.y,p.x,p.y)<60*60){bb.style.display="flex";bb.textContent="ยก📡";}
   else if(b.state==="planted"&&!beaconMine&&dist2(b.x,b.y,p.x,p.y)<54*54){bb.style.display="flex";bb.textContent="ทุบ📡";}

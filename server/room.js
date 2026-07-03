@@ -158,14 +158,18 @@ export class GameRoom {
         this.broadcast({ t: "event", kind: "beaconDown", data: { x: this.beacon.x, y: this.beacon.y } });
       }
     } else if (m.t === "beacon") {
+      // can't grab the crate through a fort wall — must breach it first
+      if (m.action === "grab" && this.beacon.state === "crate" &&
+          this.segBlocked(p.x, p.y, this.beacon.x, this.beacon.y)) return;
       const changed = handleBeaconAction(this.beacon, { id: ws.id, x: p.x, y: p.y }, m.action);
       if (changed) this.broadcastSnapshot();
     } else if (m.t === "beaconDmg") {
-      // only non-owners standing next to a planted beacon can chip it, with a
-      // sane per-hit cap (clients can't nuke it remotely / instantly)
+      // only non-owners standing next to a planted beacon (with clear line of
+      // sight — no smashing through a wall) can chip it, with a sane per-hit cap
       const amt = clamp(+m.amt || 0, 0, 60);
       if (amt > 0 && this.beacon.owner !== ws.id && this.beacon.state === "planted" &&
           dist2(this.beacon.x, this.beacon.y, p.x, p.y) < 90 * 90 &&
+          !this.segBlocked(p.x, p.y, this.beacon.x, this.beacon.y) &&
           damageBeacon(this.beacon, amt)) {
         this.broadcast({ t: "event", kind: "beaconDown", data: { x: this.beacon.x, y: this.beacon.y } });
       }
@@ -298,6 +302,24 @@ export class GameRoom {
 
   humanCount() {
     return this.players.size;
+  }
+
+  // Is a wall/door blocking the straight line between two points? Used to stop
+  // grabbing/smashing a beacon through a fort wall (authoritative anti-cheat).
+  segBlocked(ax, ay, bx, by) {
+    const minx = Math.min(ax, bx) - 24, maxx = Math.max(ax, bx) + 24;
+    const miny = Math.min(ay, by) - 24, maxy = Math.max(ay, by) + 24;
+    const cand = [];
+    for (const b of this.builds.values()) {
+      if ((b.t === "wall" || b.t === "door") && b.x >= minx && b.x <= maxx && b.y >= miny && b.y <= maxy) cand.push(b);
+    }
+    if (!cand.length) return false;
+    const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1, steps = Math.min(48, Math.ceil(len / 14));
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps, x = ax + dx * t, y = ay + dy * t;
+      for (const b of cand) if (Math.abs(x - b.x) < 20 && Math.abs(y - b.y) < 20) return true;
+    }
+    return false;
   }
 
   // ---- server bots: full survivors that gather, build a base (table/furnace/
