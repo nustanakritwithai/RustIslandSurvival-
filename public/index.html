@@ -204,6 +204,32 @@
   .dbg label{font-size:11px;letter-spacing:.3px;}
   .dbg .v{font-family:var(--disp);font-size:12px;color:var(--amber);text-align:right;min-width:42px;}
   .dbg input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--amber);margin:0;height:20px;}
+
+  /* ---- tutorial quest ---- */
+  #tut{position:fixed;left:10px;top:164px;z-index:24;width:198px;background:rgba(20,18,13,.88);
+    border:1px solid rgba(224,150,46,.5);border-left:3px solid var(--amber);border-radius:6px;
+    padding:7px 9px 8px;display:none;pointer-events:none;}
+  #tut.on{display:block;}
+  #tut .tt{font-family:var(--disp);font-size:12px;color:var(--amber);letter-spacing:.5px;padding-right:26px;}
+  #tut .td{font-size:10px;opacity:.85;line-height:1.5;margin:3px 0 4px;}
+  #tut .td b{color:var(--amber);}
+  #tut .tp{font-size:11px;font-weight:700;color:#ffe08a;min-height:12px;}
+  #tut .tskip{position:absolute;right:7px;top:5px;font-size:9px;opacity:.55;cursor:pointer;
+    pointer-events:auto;text-decoration:underline;}
+  #tutbig{position:fixed;inset:0;z-index:55;background:rgba(8,7,5,.7);backdrop-filter:blur(2px);
+    display:flex;align-items:center;justify-content:center;padding:20px;}
+  #tutbig.off{display:none;}
+  .tb-box{max-width:360px;background:#1d1a14;border:1px solid var(--amber);border-radius:10px;
+    padding:18px 18px 16px;text-align:center;box-shadow:0 18px 60px rgba(0,0,0,.65);}
+  .tb-box h2{font-family:var(--disp);color:var(--amber);margin:0 0 10px;font-size:18px;letter-spacing:1px;}
+  .tb-box .bd{font-size:12px;line-height:1.8;opacity:.92;text-align:left;}
+  .tb-box .bd b{color:var(--amber);}
+  .tb-box button{margin-top:14px;font-family:var(--disp);font-weight:700;font-size:14px;letter-spacing:1px;
+    padding:10px 24px;background:var(--amber);border:2px solid #241a06;color:#241a06;border-radius:6px;cursor:pointer;
+    box-shadow:0 4px 0 rgba(0,0,0,.4);}
+  .tb-box button:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.4);}
+  .tuthl{box-shadow:0 0 0 3px var(--amber),0 0 14px rgba(224,150,46,.8)!important;animation:tutpulse 1s infinite;}
+  @keyframes tutpulse{50%{box-shadow:0 0 0 5px var(--amber),0 0 22px rgba(224,150,46,.95)}}
 </style>
 </head>
 <body>
@@ -233,6 +259,8 @@
 <button id="mus" title="ดนตรี">🎵</button>
 <button id="map" title="แผนที่">🗺️</button>
 <div id="hotbar"></div>
+<div id="tut"><div class="tt" id="tut-t"></div><div class="td" id="tut-d"></div><div class="tp" id="tut-p"></div><span class="tskip" onclick="tutSkip()">ข้าม ›</span></div>
+<div id="tutbig" class="off"><div class="tb-box"><h2 id="tb-t"></h2><div class="bd" id="tb-d"></div><button id="tb-btn" onclick="tutAck()">ตกลง</button></div></div>
 <div id="toasts"></div>
 <div id="prompt"></div>
 
@@ -632,7 +660,7 @@ function equipIndex(i){ // equip the inv item at index i into its slot
   s.n-=1; if(s.n<=0)G.inv.splice(i,1);
   const cur=G.equip[slot]; G.equip[slot]=moving;
   if(cur)invAddSlot(cur);
-  toast((slot==="hand"?"ถือ":"สวม")+ITEMS[moving.id].nm); save();
+  toast((slot==="hand"?"ถือ":"สวม")+ITEMS[moving.id].nm); tutEvent("equip",moving.id); save();
 }
 function unequip(slot){const cur=G.equip[slot];if(!cur)return;if(invAddSlot(cur)){G.equip[slot]=null;toast("ถอด"+ITEMS[cur.id].nm);save();}else toast("กระเป๋าเต็ม");}
 function ensureHandTool(t){ if(handToolPower(t))return true;
@@ -1180,6 +1208,9 @@ function deploy(){
   spawnBots(3); // local fallback bots; replaced by server players/bots once connected
   nudgeOutOfWalls(); // never spawn stuck inside a wall
   if(typeof netOnDeploy==="function")netOnDeploy();
+  // tutorial: auto-start for genuinely new players, once
+  if(!G.tut)G.tut=(G.banked||G.history.length||G.core||G.bestRun)?{done:true}:{step:0,c:{}};
+  if(!G.tut.done&&G.tut.step===0)showTutBig(TUT_STEPS[0]);
   audioInit();audioResume();musicStart();
 }
 
@@ -1218,7 +1249,7 @@ function gather(node){
   spawnFx(node.x,node.y,node.type==="water"?5:4,cc,{dir:ang,spMin:40,spMax:110,grav:node.type==="water"?60:180,lifeMin:0.25,lifeMax:0.5,up:20});
   if(node.hp<=0){
     let got=[];
-    const give=(y)=>{for(const k in y){const a=ri(y[k][0],y[k][1])*2;if(a>0){const added=invAdd(k,a);if(added){got.push(ITEMS[k].nm+" x"+added);G.stats.gathered+=added;}}}};
+    const give=(y)=>{for(const k in y){const a=ri(y[k][0],y[k][1])*2;if(a>0){const added=invAdd(k,a);if(added){got.push(ITEMS[k].nm+" x"+added);G.stats.gathered+=added;tutEvent("gather",k,added);}}}};
     give(t.yield); if(t.extra)give(t.extra);
     G.stats.harvests++;
     if(got.length)toast(got.join(", ")); else toast("กระเป๋าเต็ม!");
@@ -1520,6 +1551,7 @@ function placeBuild(){
   if(def.place==="core"){
     G.core={x:p.x,y:p.y,r:240};invRemove("territory_core",1);
     toast("วางเสาเขตแดนแล้ว — สร้างฐานในรัศมีนี้ได้");
+    tutEvent("place","core");
     G.buildMode=null;save();return;
   }
   // snap to a 40px grid, one tile ahead of the player, never on top of the player
@@ -1535,6 +1567,7 @@ function placeBuild(){
     ...(def.place==="table"?{tier:1}:{}),
     ...(sharedFort?{net:true,pending:true,nid:null}:{})});
   invRemove(id,1);
+  tutEvent("place",def.place);
   if(sharedFort)netSend({t:"build",op:"add",bt:def.place,x:px,y:py,o:G.buildOri||0});
   if(def.place==="wall"||def.place==="door")nudgeOutOfWalls(); // safety: never trap the player
   // keep placing if it's a stackable structure and you still have more
@@ -1571,7 +1604,7 @@ function openStorage(){
 function bankDur(id,dur){if(dur==null)return;G.storageDur=G.storageDur||{};G.storageDur[id]=Math.min(G.storageDur[id]??Infinity,dur);}
 function deposit(id,n){
   if(ITEMS[id].dur){for(const s of G.inv)if(s.id===id&&s.dur!=null)bankDur(id,s.dur);}
-  const moved=invRemove(id,n);G.storage[id]=(G.storage[id]||0)+moved;G.banked+=(ITEMS[id].val||0)*moved;save();}
+  const moved=invRemove(id,n);G.storage[id]=(G.storage[id]||0)+moved;G.banked+=(ITEMS[id].val||0)*moved;if(moved>0)tutEvent("deposit",id,moved);save();}
 function withdraw(id,n=1){if(!G.storage[id])return;const take=Math.min(n,G.storage[id]);const added=invAdd(id,take);if(added>0){G.storage[id]-=added;if(G.storage[id]<=0)delete G.storage[id];
   const wd=G.storageDur?G.storageDur[id]:null;
   if(wd!=null){let left=added;for(let i=G.inv.length-1;i>=0&&left>0;i--){const s=G.inv[i];if(s.id===id&&s.dur===ITEMS[id].dur){s.dur=wd;left--;}}}
@@ -1839,6 +1872,7 @@ function openCraft(forceStation){
     btn.onclick=()=>{doCraft(r);openCraft(forceStation);};
     row.appendChild(btn);wrap.appendChild(row);
   });
+  tutEvent("tab",tab);
   $("panel").classList.add("on");
 }
 function doCraft(r){
@@ -1848,6 +1882,7 @@ function doCraft(r){
   for(const k in r.cost)invRemove(k,r.cost[k]);
   const added=invAdd(r.out,r.n);sfx("craft");
   toast(added?("ได้ "+ITEMS[r.out].nm+(r.n>1?" ×"+r.n:"")):"กระเป๋าเต็ม");
+  tutEvent("craft",r.out);
 }
 function openBuild(){
   G.paused=true;const el=$("sheet");
@@ -1922,6 +1957,112 @@ function debugRebuild(){
   buildWorld();toast("สร้างแผนที่ใหม่แล้ว");
 }
 
+/* ---------- tutorial quest chain (new-player onboarding; client-only) ---------- */
+function nearestNodeWhere(pred){let best=null,bd=1e12;const p=G.player;
+  for(const n of G.nodes){if(n.dead||!pred(n.type))continue;const d=dist2(n.x,n.y,p.x,p.y);if(d<bd){bd=d;best=n;}}return best;}
+const TUT_STEPS=[
+  {title:"เป้าหมายของเกม",btn:"เข้าใจแล้ว — เริ่มเลย!",big:true,
+   desc:`🏝️ เกาะนี้จะ<b>ระเบิดเมื่อหมดรอบ</b> (ทุก 30 นาที)<br>
+     1️⃣ เก็บทรัพยากร คราฟต์ของ สร้างฐาน<br>
+     2️⃣ ช่วงท้ายรอบ <b>📡 Airdrop</b> ตกกลางเกาะ<br>
+     3️⃣ แย่งตัวส่งสัญญาณ ปักที่ฐาน ป้องกันจนหมดเวลา = <b>ชนะ!</b><br>
+     💀 ตายแล้วของที่แบกตกหมด — ฝากของแพงเข้ากล่องที่ฐานไว้ก่อน<br><br>เดี๋ยวพาเริ่มทีละขั้นเลย`,
+   on:(t)=>t==="ack"},
+  {title:"หัดเดิน",desc:`ลากจอยซ้าย (คอม: <b>WASD</b>) เดินสำรวจรอบ ๆ`,
+   on:(t,k,n,c)=>{if(t!=="walk")return false;c.w=(c.w||0)+n;return c.w>=200;},
+   prog:c=>`เดินแล้ว ${Math.min(200,Math.round(c.w||0))}/200`},
+  {title:"ตัดไม้",desc:`เดินตามลูกศรไปหา<b>ต้นไม้</b> แล้วกดปุ่ม <b>เก็บ</b> ซ้ำ ๆ (คอม: E)`,
+   hi:"a-act",target:()=>nearestNodeWhere(t=>t==="tree"),
+   on:(t,k,n,c)=>{if(t==="gather"&&k==="wood")c.wood=(c.wood||0)+n;return (c.wood||0)>=10;},
+   prog:c=>`🪵 ไม้ ${Math.min(10,c.wood||0)}/10`,reward:[["berries",3]]},
+  {title:"เก็บหิน + เส้นใย",desc:`เก็บ<b>หิน</b>จากก้อนหิน และ<b>เส้นใย</b>จากพุ่มไม้/กอกก — สังเกตน้ำหนักกระเป๋ามุมขวาบน`,
+   target:()=>{const c=(G.tut&&G.tut.c)||{};return ((c.stone||0)<6)?nearestNodeWhere(t=>t==="rock"):nearestNodeWhere(t=>t==="bush"||t==="reed"||t==="herb");},
+   on:(t,k,n,c)=>{if(t==="gather"&&(k==="stone"||k==="plant_fiber"))c[k]=(c[k]||0)+n;return (c.stone||0)>=6&&(c.plant_fiber||0)>=3;},
+   prog:c=>`🪨 ${Math.min(6,c.stone||0)}/6 · 🌾 ${Math.min(3,c.plant_fiber||0)}/3`},
+  {title:"คราฟต์ขวานอันแรก",desc:`เปิดเมนู <b>คราฟต์</b> → ทำ<b>เชือก</b>จากเส้นใย (แท็บ 🔥) แล้วคราฟต์<b>ขวานหิน</b> (แท็บ ⛏️) — <b>เลขแดง</b> = ของยังไม่พอ`,
+   hi:"m-craft",
+   on:(t,k)=>t==="craft"&&k==="stone_axe",reward:[["rope",2]]},
+  {title:"ถือขวาน",desc:`เปิดเมนู <b>ของ</b> → แตะขวานหิน → <b>✋ ถือ</b> — มีขวานแล้วตัดไม้ไวขึ้นเยอะ`,
+   hi:"m-inv",
+   on:(t,k)=>t==="equip"&&ITEMS[k]&&ITEMS[k].tool==="axe"},
+  {title:"ปักหลักสร้างบ้าน",desc:`คราฟต์<b>เสาเขตแดน</b> (แท็บ 🏠 สร้าง) แล้วเปิดเมนู <b>สร้าง</b> → เลือกวาง → กด <b>วาง</b> ตรงที่ถูกใจ — วงส้มคือเขตที่วางของได้`,
+   hi:"m-build",
+   on:(t,k)=>t==="place"&&k==="core",reward:[["wood",10]]},
+  {title:"สร้างโต๊ะคราฟต์",desc:`คราฟต์<b>โต๊ะคราฟต์</b>แล้ววางในเขตแดน — โต๊ะปลดล็อกอาวุธ/เกราะขั้นสูง (วางกำแพงกด <b>⟳</b> เพื่อหมุนแนวได้)`,
+   target:()=>G.core,
+   on:(t,k)=>t==="place"&&k==="table"},
+  {title:"ส่องแท็บคราฟต์",desc:`เปิดเมนูคราฟต์ แล้วกดดูแท็บ <b>⚔️อาวุธ · 🛡️เกราะ · 🧪ยา · 🏠สร้าง</b> ให้ครบ — เตาไว้หลอมแร่/ต้มน้ำ กล่องไว้ฝากของ`,
+   hi:"m-craft",
+   on:(t,k,n,c)=>{if(t==="tab"&&["weapon","armor","med","build"].includes(k))c[k]=1;return !!(c.weapon&&c.armor&&c.med&&c.build);},
+   prog:c=>`เปิดแล้ว ${["weapon","armor","med","build"].filter(k=>c[k]).length}/4`},
+  {title:"เอาตัวรอด",desc:`<b>กิน/ดื่ม</b>อะไรสักอย่าง (ปุ่ม F) และคราฟต์<b>กล่องเก็บของ</b> วางแล้ว<b>ฝากของ 1 ชิ้น</b> — ของในกล่องไม่หายตอนตาย!`,
+   target:()=>G.buildings.find(b=>b.type==="box")||null,
+   on:(t,k,n,c)=>{if(t==="consume")c.eat=1;if(t==="deposit")c.dep=1;return !!(c.eat&&c.dep);},
+   prog:c=>`${c.eat?"✅":"⬜"} กิน/ดื่ม · ${c.dep?"✅":"⬜"} ฝากของ`,reward:[["leather_armor",1]]},
+];
+const TUT_FINAL={title:"🎓 จบบทเรียน!",btn:"ลุยเลย!",final:true,
+  desc:`คุณพร้อมเอาตัวรอดแล้ว! ต่อจากนี้:<br>
+    ⚒️ อัปเกรดโต๊ะเป็น <b>Lv2</b> → ปลดล็อกยุคเหล็กและปืน<br>
+    🧱 สร้างกำแพง/ป้อมปืนล้อมฐาน<br>
+    📡 ช่วงท้ายรอบ ไปแย่ง<b>ตัวส่งสัญญาณ</b>มาปักที่ฐาน ป้องกันจนหมดเวลา = <b>ชนะ</b><br>
+    🎁 รางวัลจบบทเรียน: เสื้อเกราะหนัง (สวมได้จากเมนูของ)`};
+function tutEvent(type,key,n=1){
+  const t=G.tut;if(!t||t.done||G.dead)return;
+  const st=TUT_STEPS[t.step];if(!st)return;
+  t.c=t.c||{};
+  if(st.on(type,key,n,t.c))tutAdvance();
+}
+function tutAdvance(){
+  const t=G.tut,st=TUT_STEPS[t.step];
+  if(st.reward)for(const[id,n]of st.reward){invAdd(id,n);toast("🎁 รางวัล: "+ITEMS[id].nm+(n>1?" ×"+n:""));}
+  if(t.step>0)toast("✅ สำเร็จ: "+st.title);
+  sfx("craft");
+  t.step++;t.c={};
+  if(t.step>=TUT_STEPS.length){t.done=true;tutClearHi();showTutBig(TUT_FINAL);}
+  save();
+}
+function showTutBig(o){$("tb-t").innerHTML=o.title;$("tb-d").innerHTML=o.desc;
+  $("tb-btn").textContent=o.btn||"ตกลง";G._tutFinal=!!o.final;$("tutbig").classList.remove("off");}
+function tutAck(){$("tutbig").classList.add("off");if(!G._tutFinal)tutEvent("ack");G._tutFinal=false;}
+function tutClearHi(){if(G._tutHiId){const o=$(G._tutHiId);if(o)o.classList.remove("tuthl");G._tutHiId=null;}G._tutSig=null;}
+function tutSkip(){
+  if(!confirm("ข้ามบทเรียนสอนเล่น? (เปิดใหม่ได้จากหน้าแรก)"))return;
+  tutClearHi();G.tut={done:true};$("tut").classList.remove("on");$("tutbig").classList.add("off");save();
+}
+function tutRestart(){G.tut={step:0,c:{}};save();deploy();}
+function tutHUD(){
+  const el=$("tut");if(!el)return;
+  const t=G.tut,act=t&&!t.done&&G.round.active&&!G.dead&&t.step>0&&t.step<TUT_STEPS.length;
+  el.classList.toggle("on",!!act);
+  if(!act){if(!t||t.done)tutClearHi();return;}
+  const st=TUT_STEPS[t.step];
+  const pr=st.prog?st.prog(t.c||{}):"";
+  const sig=t.step+"|"+pr;
+  if(G._tutSig!==sig){G._tutSig=sig;
+    $("tut-t").textContent="📖 ภารกิจ "+t.step+"/"+(TUT_STEPS.length-1)+" · "+st.title;
+    $("tut-d").innerHTML=st.desc;$("tut-p").textContent=pr;}
+  if(G._tutHiId!==(st.hi||null)){tutClearHi();G._tutSig=sig;
+    if(st.hi){const o=$(st.hi);if(o){o.classList.add("tuthl");G._tutHiId=st.hi;}}}
+}
+function drawTutArrow(){
+  const t=G.tut;if(!t||t.done||!G.round.active||G.dead||t.step<=0)return;
+  const st=TUT_STEPS[t.step];if(!st||!st.target)return;
+  const tg=st.target();if(!tg)return;
+  const sx=tg.x-cam.x,sy=tg.y-cam.y;
+  const pulse=.5+.5*Math.sin(now()/250);
+  if(sx>40&&sy>40&&sx<VW-40&&sy<VH-40){ // on screen: pulsing ring on the target
+    ctx.save();ctx.strokeStyle=`rgba(255,215,90,${.45+.4*pulse})`;ctx.lineWidth=3;ctx.setLineDash([6,6]);
+    ctx.beginPath();ctx.arc(sx,sy,26+pulse*6,0,7);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+  }else{ // off screen: edge arrow pointing toward it
+    const cx=VW/2,cy=VH/2,a=Math.atan2(sy-cy,sx-cx);
+    const r=Math.min(VW,VH)/2-56;
+    ctx.save();ctx.translate(cx+Math.cos(a)*r,cy+Math.sin(a)*r);ctx.rotate(a);
+    ctx.fillStyle=`rgba(255,215,90,${.55+.35*pulse})`;
+    ctx.beginPath();ctx.moveTo(20,0);ctx.lineTo(-7,-11);ctx.lineTo(-2,0);ctx.lineTo(-7,11);ctx.closePath();ctx.fill();
+    ctx.restore();
+  }
+}
+
 /* ---------- toast ---------- */
 const activeToasts=new Map(); // msg -> {el,to}
 function toast(msg){
@@ -1961,7 +2102,7 @@ const store={
 };
 async function save(){
   const data={storage:G.storage,storageDur:G.storageDur||{},banked:G.banked,buildings:G.buildings.filter(b=>!b.bot&&!b.net),core:G.core,
-    bestRun:G.bestRun,equip:G.equip,hotbar:G.hotbar,safe:G.player.safe,name:G.playerName,skin:G.skin};
+    bestRun:G.bestRun,equip:G.equip,hotbar:G.hotbar,safe:G.player.safe,name:G.playerName,skin:G.skin,tut:G.tut||null};
   await store.set(KEY,JSON.stringify(data),false);
 }
 async function load(){
@@ -1971,6 +2112,7 @@ async function load(){
     if(d.equip)G.equip=Object.assign({hand:null,body:null,head:null,back:null,feet:null},d.equip);
     if(d.hotbar)G.hotbar=d.hotbar;
     if(typeof d.skin==="number")G.skin=d.skin;
+    if(d.tut)G.tut=d.tut;
     if(d.safe)G.player.safe=d.safe;
     if(d.name)G.playerName=d.name;
   }catch(e){}
@@ -1979,7 +2121,7 @@ async function saveHistory(){ await store.set(HKEY,JSON.stringify(G.history),fal
 async function loadHistory(){ const raw=await store.get(HKEY,false); if(!raw)return; try{G.history=JSON.parse(raw)||[];}catch(e){} }
 async function hardReset(){
   await store.del(KEY,false); await store.del(HKEY,false);
-  G.storage={};G.storageDur={};G.banked=0;G.buildings=[];G.core=null;G.bestRun=0;G.history=[];
+  G.storage={};G.storageDur={};G.banked=0;G.buildings=[];G.core=null;G.bestRun=0;G.history=[];G.tut=null;
   G.equip={hand:null,body:null,head:null,back:null,feet:null};G.hotbar=[null,null,null,null];G.player.safe=[null,null];
   closePanel();toast("ล้าง save แล้ว");
 }
@@ -2007,7 +2149,8 @@ function survival(dt){
   else if(!sick && p.hunger>40&&p.thirst>40&&p.hp<100)p.hp=clamp(p.hp+dt*1.2,0,100); // regen (blocked while sick)
   if(p.hp<=0)die();
 }
-function consumeItem(s){
+function consumeItem(s){const ok=consumeItemInner(s);if(ok)tutEvent("consume",s&&s.id,1);return ok;}
+function consumeItemInner(s){
   const p=G.player,d=ITEMS[s.id];p.buffs=p.buffs||{};p.status=p.status||{};
   if(d.buff){invRemove(s.id,1);p.buffs[d.buff]=d.bdur||25;
     spawnFx(p.x,p.y-6,10,"#bfe3ff",{spMin:20,spMax:80,grav:-25,lifeMin:0.4,lifeMax:0.9});sfx("heal");toast("ดื่ม"+d.nm+" — "+BUFFS[d.buff].nm+" "+(d.bdur||25)+"วิ");return true;}
@@ -2242,6 +2385,8 @@ function update(dt){
   projTick(dt);
   survival(dt);
   fxTick(dt);
+  if(G.tut&&!G.tut.done){const md=Math.hypot(p.x-(G._tpx??p.x),p.y-(G._tpy??p.y));if(md>0&&md<50)tutEvent("walk",null,md);}
+  G._tpx=p.x;G._tpy=p.y;
   if(G.dmgNums)for(let i=G.dmgNums.length-1;i>=0;i--){if((G.dmgNums[i].t+=dt)>0.85)G.dmgNums.splice(i,1);}
 }
 function autoConsume(){
@@ -2404,6 +2549,7 @@ function draw(){
     rv.addColorStop(0,"rgba(180,20,20,0)");rv.addColorStop(1,`rgba(170,15,15,${a})`);
     ctx.fillStyle=rv;ctx.fillRect(0,0,VW,VH);
   }
+  drawTutArrow();
 }
 // fireflies drift near the player at night for ambience
 const _ff=[];
@@ -2960,7 +3106,7 @@ function updateHUD(){
   if(G.mounted){mb.style.display="flex";mb.textContent="ลงม้า";}
   else if(invCount("saddle")>0&&nearestHorse()){mb.style.display="flex";mb.textContent="ขึ้นม้า";}
   else mb.style.display="none";
-  drawMini();drawHotbar();drawBuffs();
+  drawMini();drawHotbar();drawBuffs();tutHUD();
   if(G.mapOpen)drawFullMap();
 }
 
@@ -3052,6 +3198,7 @@ function showStart(){
       🛡️ <b>ปัก+ป้องกัน</b> beacon จากมอนสเตอร์+คู่แข่ง จนหมดเวลา = ชนะ<br>
       📦 ฝากของแพงเข้า <b>กล่องเก็บของ</b> ที่ฐาน — ตายแล้วของในกล่องไม่หาย</div>
     <div style="margin:14px 0"><button onclick="deploy()">เข้าเซิร์ฟเวอร์ (เหลือ ${fmtClock(s.remain)})</button></div>
+    <div style="font-size:11px;margin:-6px 0 8px"><span class="danger-link" style="color:var(--good)" onclick="tutRestart()">📖 มือใหม่? เริ่มบทเรียนสอนเล่น</span></div>
     <div id="board" style="font-size:10px;opacity:.7;margin:4px 0">กำลังโหลดกระดานผู้ชนะ...</div>
     ${historyBlock()}
     <div style="font-size:10px;opacity:.55;line-height:1.7;margin-top:12px">
