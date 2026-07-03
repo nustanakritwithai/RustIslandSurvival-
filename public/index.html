@@ -1320,12 +1320,18 @@ function reload(){
   invRemove("bullet",take);h.loaded=(h.loaded||0)+take;
   p.reloadT=d.reload||1.5;toast("รีโหลด +"+take);
 }
-function throwBomb(){
+function useBomb(){ // satchel charge: stick it onto a nearby wall/door, 3s fuse
   const p=G.player;
   if(invCount("bomb")<1){toast("ไม่มีลูกระเบิด");return;}
-  invRemove("bomb",1);const ang=p.aim;p.atkT=0.22;
-  G.projectiles.push({x:p.x,y:p.y-2,vx:Math.cos(ang)*330,vy:Math.sin(ang)*330,life:0.65,t:0,dmg:0,explode:true,blast:ITEMS.bomb.blast,bd:ITEMS.bomb.blastDmg});
-  toast("ขว้างระเบิด!");
+  let best=null,bd=52*52;
+  for(const b of G.buildings){if(b.type!=="wall"&&b.type!=="door")continue;
+    const d=dist2(b.x,b.y,p.x,p.y);if(d<bd){bd=d;best=b;}}
+  if(!best){toast("💣 ต้องยืนติดกำแพง/ประตู แล้วค่อยแปะระเบิด");return;}
+  invRemove("bomb",1);p.atkT=0.22;
+  const dx=p.x-best.x,dy=p.y-best.y,dd=Math.hypot(dx,dy)||1;
+  G.projectiles.push({x:best.x+dx/dd*16,y:best.y+dy/dd*16,vx:0,vy:0,life:3,t:0,dmg:0,
+    explode:true,stuck:true,blast:ITEMS.bomb.blast,bd:ITEMS.bomb.blastDmg});
+  sfx("build");toast("💣 แปะระเบิดแล้ว — ถอยห่าง! (3 วิ)");
 }
 function boom(pr){
   addShake(9);
@@ -1336,7 +1342,7 @@ function boom(pr){
   if(window.NET&&NET.connected)NET.botMap.forEach(b=>{if(dist2(b.x,b.y,pr.x,pr.y)<r*r){netSend({t:"botHit",id:b.id,dmg:pr.bd||60});b.dmgT=0.3;}});
   for(const h of G.horses){if(dist2(h.x,h.y,pr.x,pr.y)<r*r){h.hp-=pr.bd||60;h.dmgT=0.3;}}
   for(let bi=G.buildings.length-1;bi>=0;bi--){const bd=G.buildings[bi];
-    if(dist2(bd.x,bd.y,pr.x,pr.y)<(r+8)*(r+8)){bd.hp-=(pr.bd||60)*1.2;
+    if(dist2(bd.x,bd.y,pr.x,pr.y)<(r+8)*(r+8)){bd.hp-=(pr.bd||60)*(pr.stuck?3.2:1.2); // a charge stuck on the wall blasts it much harder
       if(bd.hp<=0){if(bd.net&&bd.nid!=null)netSend({t:"build",op:"del",id:bd.nid});G.buildings.splice(bi,1);}}}
   spawnFx(pr.x,pr.y,20,"#ffb347",{spMin:70,spMax:280,grav:50,lifeMin:0.3,lifeMax:0.65,rMin:2,rMax:6});
   spawnFx(pr.x,pr.y,12,"#c4452f",{spMin:50,spMax:200,grav:50,lifeMin:0.35,lifeMax:0.75,rMin:2,rMax:5});
@@ -1356,7 +1362,9 @@ function projTick(dt){
       if(pr.t>=pr.life||wall||oob)G.projectiles.splice(i,1);
       continue;
     }
-    if(pr.explode){ if(pr.t>=pr.life||wall||oob){boom(pr);G.projectiles.splice(i,1);} continue; }
+    if(pr.explode){
+      if(pr.stuck&&Math.floor(pr.t)!==Math.floor(pr.t-dt))sfx("ui"); // fuse beep each second
+      if(pr.t>=pr.life||(!pr.stuck&&(wall||oob))){boom(pr);G.projectiles.splice(i,1);} continue; }
     let hitWolf=false;
     for(const w of G.wolves){if(dist2(w.x,w.y,pr.x,pr.y)<20*20){w.hp-=pr.dmg;w.dmgT=0.25;reportMobHit(w,pr.dmg);spawnDmg(w.x,w.y-12,pr.dmg,"#ffe08a");
       spawnFx(w.x,w.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;break;}}
@@ -1722,7 +1730,7 @@ function useHotbar(i){
   if(!id){openHotbarPicker(i);return;} // empty -> choose what to install
   const d=ITEMS[id];const idx=G.inv.findIndex(s=>s.id===id);
   if(d.food||d.drink||d.heal){if(idx<0){toast("ไม่มี"+d.nm);return;}consumeItem(G.inv[idx]);return;}
-  if(d.throw){if(invCount(id)<1){toast("ไม่มี"+d.nm);return;}throwBomb();return;}
+  if(d.throw){if(invCount(id)<1){toast("ไม่มี"+d.nm);return;}useBomb();return;}
   if(d.place){if(invCount(id)<1){toast("ไม่มี"+d.nm);return;}startBuild(id);return;}
   if(d.slot==="hand"){if(G.equip.hand&&G.equip.hand.id===id){toast("ถือ"+d.nm+"อยู่แล้ว");return;}if(idx<0){toast("ไม่มี"+d.nm);return;}equipIndex(idx);return;}
   toast(d.nm);
@@ -1738,7 +1746,7 @@ function openHotbarPicker(slot){
   const wrap=$("hp-list");
   if(!ids.length)wrap.innerHTML='<div class="empty-note" style="grid-column:1/-1">ยังไม่มีของที่ผูกได้ — คราฟต์อาวุธ/อาหาร/ของวางก่อน</div>';
   ids.forEach(id=>{const d=ITEMS[id];const c=document.createElement("div");c.className="cell";
-    const kind=d.place?"วาง":d.throw?"ขว้าง":d.heal?"ฟื้น":d.food?"กิน":d.drink?"ดื่ม":"ถือ";
+    const kind=d.place?"วาง":d.throw?"แปะ":d.heal?"ฟื้น":d.food?"กิน":d.drink?"ดื่ม":"ถือ";
     c.innerHTML=`<div class="ic">${itemIcon(id)}</div><div>${d.nm}</div><div class="ctag">${kind}</div>`;
     c.onclick=()=>{assignHotbar(id,slot);closePanel();};wrap.appendChild(c);});
   $("panel").classList.add("on");
@@ -1795,7 +1803,7 @@ function openItemActions(index){
   if(d.slot)acts.push([d.slot==="hand"?"✋ ถือ":"🦺 สวม",`equipIndex(${index});openInv()`]);
   if(d.heal)acts.push(["💊 ใช้ฟื้น HP",`consumeItem(G.inv[${index}]);openInv()`]);
   if(d.food||d.drink)acts.push([d.food?"🍖 กิน":"💧 ดื่ม",`consumeItem(G.inv[${index}]);openInv()`]);
-  if(d.throw)acts.push(["💣 ขว้าง",`closePanel();throwBomb()`]);
+  if(d.throw)acts.push(["💣 แปะกำแพง (ระเบิด)",`closePanel();useBomb()`]);
   if(freeSafe(s.id)>=0)acts.push(["🔒 → ช่องปลอดภัย",`toSafe(${index});openInv()`]);
   if(d.food||d.drink||d.heal||d.slot==="hand"||d.throw||d.place)acts.push(["⭐ → ช่องด่วน",`assignHotbar('${s.id}');openInv()`]);
   if(s.n>1)acts.push(["✂️ แยกครึ่ง",`splitStack(${index});openInv()`]);
@@ -2427,7 +2435,11 @@ function draw(){
   for(const pr of G.projectiles){const sx=pr.x-cam.x,sy=pr.y-cam.y;const a=Math.atan2(pr.vy,pr.vx);
     if(pr.enemy){ctx.fillStyle="#8fd14a";ctx.beginPath();ctx.arc(sx,sy,4,0,7);ctx.fill();
       ctx.fillStyle="rgba(143,209,74,.35)";ctx.beginPath();ctx.arc(sx,sy,7,0,7);ctx.fill();continue;}
-    if(pr.explode){ctx.fillStyle="#2a2420";ctx.beginPath();ctx.arc(sx,sy,5,0,7);ctx.fill();
+    if(pr.explode){
+      if(pr.stuck){ // stuck charge: blast-radius telegraph that tightens as the fuse burns
+        ctx.globalAlpha=.14+.12*Math.sin(now()/90);ctx.strokeStyle="#ff5a3a";ctx.lineWidth=2;ctx.setLineDash([5,5]);
+        ctx.beginPath();ctx.arc(sx,sy,(pr.blast||55)*(1-(pr.t/pr.life)*0.25),0,7);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;}
+      ctx.fillStyle="#2a2420";ctx.beginPath();ctx.arc(sx,sy,5,0,7);ctx.fill();
       ctx.fillStyle=(Math.floor(now()/120)%2)?"#e0962e":"#c4452f";ctx.beginPath();ctx.arc(sx,sy-5,2,0,7);ctx.fill();continue;}
     if(pr.dropId==="arrow"){ctx.save();ctx.translate(sx,sy);ctx.rotate(a);
       ctx.strokeStyle="#e8d9b0";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-9,0);ctx.lineTo(6,0);ctx.stroke();
