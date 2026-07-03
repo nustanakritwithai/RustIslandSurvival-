@@ -62,6 +62,18 @@ function zoneInfoAt(x, y) {
 }
 const botName = () => BOT_NAMES_A[ri(0, BOT_NAMES_A.length - 1)] + BOT_NAMES_B[ri(0, BOT_NAMES_B.length - 1)];
 
+// Bot crafting progression: after `t` seconds spent prepping at their base the
+// bot "crafts" the next tier (visible to players: held weapon + worn armor in
+// the snapshot, and better loot when the bot is killed).
+const BOT_GEAR = [
+  { t: 0,   w: "wooden_spear" },
+  { t: 25,  w: "machete" },
+  { t: 60,  w: "machete",    bd: "leather_armor" },
+  { t: 100, w: "thai_sword", bd: "leather_armor", hd: "leather_helm" },
+  { t: 150, w: "pistol",     bd: "leather_armor", hd: "iron_helm" },
+  { t: 210, w: "rifle",      bd: "iron_armor",    hd: "iron_helm" },
+];
+
 export class GameRoom {
   constructor() {
     this.players = new Map(); // id -> {ws,name,x,y,dir,hp,carrying,last}
@@ -71,6 +83,8 @@ export class GameRoom {
     this._bid = 1;
     this.mobs = [];             // shared authoritative monsters
     this._mid = 1;
+    this._botSeq = 1;           // unique bot ids across respawns
+    this._botRespawnAt = null;  // pending bot respawn after one is killed
     this.beacon = newBeacon();
     this.board = new Leaderboard();
     this.slot = slotInfo();
@@ -189,6 +203,33 @@ export class GameRoom {
           });
         }
       }
+    } else if (m.t === "botHit") {
+      // players can fight bots (essential counterplay now that bots contest the
+      // beacon). Same caps as mobHit; death drops the beacon + gear loot.
+      const dmg = clamp(+m.dmg || 0, 0, 120);
+      const i = this.bots.findIndex((b) => b.id === m.id);
+      if (i >= 0 && dmg > 0 && dist2(this.bots[i].x, this.bots[i].y, p.x, p.y) < 900 * 900) {
+        const bot = this.bots[i];
+        bot.hp -= dmg;
+        if (bot.hp <= 0) {
+          if (this.beacon.owner === bot.id &&
+              (this.beacon.state === "carried" || this.beacon.state === "planted")) {
+            dropBeacon(this.beacon, bot.x, bot.y);
+            this.broadcast({ t: "event", kind: "beaconDown", data: { x: this.beacon.x, y: this.beacon.y } });
+          }
+          const g = BOT_GEAR[bot.gear] || BOT_GEAR[0];
+          const loot = [{ id: "rope", n: 2 }, { id: "cooked_meat", n: ri(1, 2) }];
+          if (bot.gear >= 2) loot.push({ id: "animal_hide", n: 2 });
+          if (bot.gear >= 4) loot.push({ id: "bullet", n: ri(4, 9) });
+          if (g.w) loot.push({ id: g.w, n: 1 });
+          this.broadcast({
+            t: "event", kind: "bot",
+            data: { op: "del", id: bot.id, name: bot.name, x: Math.round(bot.x), y: Math.round(bot.y), killer: ws.id, loot },
+          });
+          this.bots.splice(i, 1);
+          this._botRespawnAt = Date.now() + 25000; // a fresh rival lands later
+        }
+      }
     } else if (m.t === "ping") {
       ws.send(encode({ t: "pong" }));
     }
@@ -237,22 +278,32 @@ export class GameRoom {
     return this.players.size;
   }
 
-  // ---- server bots (simplified competitors so the island never feels empty) ----
+  // ---- server bots: full survivors that gather, build a base (table/furnace/
+  // box), craft up a gear ladder, wall in, and contest the beacon like players ----
+  mkBot() {
+    const edge = ri(0, 3);
+    let x, y;
+    if (edge === 0) { x = rand(120, WORLD.W - 120); y = 120; }
+    else if (edge === 1) { x = rand(120, WORLD.W - 120); y = WORLD.H - 120; }
+    else if (edge === 2) { x = 120; y = rand(120, WORLD.H - 120); }
+    else { x = WORLD.W - 120; y = rand(120, WORLD.H - 120); }
+    // home base somewhere in the forest ring at a mid distance from the centre
+    const a = Math.random() * Math.PI * 2, r = rand(700, 1400);
+    const hx = clamp(WORLD.W / 2 + Math.cos(a) * r, 520, WORLD.W - 520);
+    const hy = clamp(WORLD.H / 2 + Math.sin(a) * r, 520, WORLD.H - 520);
+    return {
+      id: "bot" + (this._botSeq++), name: botName(), x, y, dir: 1, hp: 120, maxhp: 120,
+      col: BOT_COLS[this._botSeq % BOT_COLS.length], t: rand(1, 3), tx: x, ty: y,
+      home: { x: Math.round(hx / 40) * 40, y: Math.round(hy / 40) * 40 },
+      phase: "gather", work: 0, harvestT: 0, buildStep: 0, buildT: 0,
+      prepT: 0, gear: 0, hitT: 0, contestDelay: rand(2, 6),
+      fortStep: 0, fortT: 0, wob: rand(0, 6),
+    };
+  }
+
   spawnBots() {
     this.bots = [];
-    for (let i = 0; i < FILL_BOTS_TO; i++) {
-      const edge = ri(0, 3);
-      let x, y;
-      if (edge === 0) { x = rand(120, WORLD.W - 120); y = 120; }
-      else if (edge === 1) { x = rand(120, WORLD.W - 120); y = WORLD.H - 120; }
-      else if (edge === 2) { x = 120; y = rand(120, WORLD.H - 120); }
-      else { x = WORLD.W - 120; y = rand(120, WORLD.H - 120); }
-      this.bots.push({
-        id: "bot" + i, name: botName(), x, y, dir: 1, hp: 90, maxhp: 90,
-        col: BOT_COLS[i % BOT_COLS.length], t: rand(1, 3), tx: x, ty: y,
-        carryT: 0, home: null,
-      });
-    }
+    for (let i = 0; i < FILL_BOTS_TO; i++) this.bots.push(this.mkBot());
   }
 
   // Keep enough competitors alive: real players replace bots. With >=2 humans we
@@ -264,35 +315,172 @@ export class GameRoom {
       // if a bot holds the beacon, drop it back to a crate before removing
       if (this.bots.some((b) => b.id === this.beacon.owner)) dropBeacon(this.beacon);
       this.bots = [];
-    } else if (this.bots.length < want) {
-      const have = this.bots.length;
-      for (let i = have; i < want; i++) {
-        this.bots.push({
-          id: "bot" + i, name: botName(), x: rand(120, WORLD.W - 120), y: 120,
-          dir: 1, hp: 90, maxhp: 90, col: BOT_COLS[i % BOT_COLS.length],
-          t: rand(1, 3), tx: rand(120, WORLD.W - 120), ty: rand(120, WORLD.H - 120),
-          carryT: 0, home: null,
-        });
+    } else {
+      while (this.bots.length < want) this.bots.push(this.mkBot());
+      while (this.bots.length > want) {
+        const rm = this.bots.pop();
+        if (this.beacon.owner === rm.id) dropBeacon(this.beacon, rm.x, rm.y);
       }
     }
   }
 
-  // Filler bots just wander now — they no longer contest the beacon, so real
-  // players can grab/plant/defend it without bots snatching it.
-  botTick(dt) {
+  // Bots place real shared structures so every player sees their base grow.
+  addBotBuild(t, x, y) {
+    x = clamp(Math.round(x / 40) * 40, 80, WORLD.W - 80);
+    y = clamp(Math.round(y / 40) * 40, 80, WORLD.H - 80);
+    for (const b of this.builds.values()) {
+      if (Math.abs(b.x - x) < 8 && Math.abs(b.y - y) < 8) return;
+    }
+    if (this.builds.size > 4000) return;
+    const b = { id: this._bid++, t, x, y, hp: t === "wall" ? 300 : 200 };
+    this.builds.set(b.id, b);
+    this.broadcast({ t: "event", kind: "build", data: { op: "add", b } });
+  }
+
+  botGoal(bot, bcn, remain) {
+    // ---- beacon behaviours override the life sim once the airdrop starts ----
+    if (bcn.state === "carried" && bcn.owner === bot.id) {
+      bcn.x = bot.x; bcn.y = bot.y;
+      const h = bot.home;
+      if (dist2(bot.x, bot.y, h.x, h.y) < 34 * 34) {
+        bcn.state = "planted"; bcn.x = h.x; bcn.y = h.y;
+        bcn.hp = 260; bcn.maxhp = 260;
+        bot.fortStep = 0; bot.fortT = 0.4;
+        return null;
+      }
+      return { x: h.x, y: h.y, sp: 78 };                 // haul it home
+    }
+    if (bcn.state === "planted" && bcn.owner === bot.id) {
+      // wall the beacon in with a tight contiguous ring (south door), then patrol
+      if (bot.fortStep < 8 && bot.fortT <= 0) {
+        const R = 40, pts = [[-R, -R], [0, -R], [R, -R], [R, 0], [R, R], [-R, R], [-R, 0], [0, R]];
+        const o = pts[bot.fortStep];
+        this.addBotBuild(bot.fortStep === 7 ? "door" : "wall", bcn.x + o[0], bcn.y + o[1]);
+        // shove rival bots out of the ring so they can't get walled in with it
+        for (const rb of this.bots) {
+          if (rb === bot) continue;
+          const dd = Math.hypot(rb.x - bcn.x, rb.y - bcn.y);
+          if (dd < 64) {
+            const a2 = Math.atan2(rb.y - bcn.y, rb.x - bcn.x) || rand(0, Math.PI * 2);
+            rb.x = clamp(bcn.x + Math.cos(a2) * 110, 60, WORLD.W - 60);
+            rb.y = clamp(bcn.y + Math.sin(a2) * 110, 60, WORLD.H - 60);
+          }
+        }
+        bot.fortStep++; bot.fortT = 0.9;
+      }
+      const a = Date.now() / 700 + bot.wob;
+      return { x: bcn.x + Math.cos(a) * 14, y: bcn.y + Math.sin(a) * 14, sp: 30 };
+    }
+    if (bcn.state === "planted" && bcn.owner !== bot.id) {
+      const d2 = dist2(bot.x, bot.y, bcn.x, bcn.y);
+      if (d2 < 30 * 30 && bot.hitT <= 0) {
+        bot.hitT = 1.2;                                   // smash the rival's beacon
+        if (damageBeacon(this.beacon, 5)) {
+          this.broadcast({ t: "event", kind: "beaconDown", data: { x: bcn.x, y: bcn.y } });
+        }
+      } else if (d2 < 150 * 150 && bot.hitT <= 0) {
+        // fort in the way: besiege the nearest wall/door piece to breach it
+        let best = null, bd = 60 * 60;
+        for (const b of this.builds.values()) {
+          if (b.t !== "wall" && b.t !== "door") continue;
+          const dd = dist2(b.x, b.y, bot.x, bot.y);
+          if (dd < bd) { bd = dd; best = b; }
+        }
+        if (best) {
+          bot.hitT = 0.9; best.hp -= 12;
+          if (best.hp <= 0) {
+            this.builds.delete(best.id);
+            this.broadcast({ t: "event", kind: "build", data: { op: "del", id: best.id } });
+          }
+        }
+      }
+      return { x: bcn.x, y: bcn.y, sp: 100 };
+    }
+    if (bcn.state === "crate") {
+      if (bot.contestDelay > 0) return null;              // give humans a head start
+      if (dist2(bot.x, bot.y, bcn.x, bcn.y) < 26 * 26) {
+        bcn.state = "carried"; bcn.owner = bot.id;
+        return null;
+      }
+      return { x: bcn.x, y: bcn.y, sp: 100 };
+    }
+    if (bcn.state === "carried" && bcn.owner && bcn.owner !== bot.id) {
+      const hu = this.players.get(bcn.owner);             // pressure the carrier
+      const ob = hu ? null : this.bots.find((b2) => b2.id === bcn.owner);
+      const cx = hu ? hu.x : ob ? ob.x : null;
+      if (cx != null) return { x: cx, y: hu ? hu.y : ob.y, sp: 95 };
+      return null;
+    }
+    if (bcn.state === "incoming") return { x: bcn.x, y: bcn.y, sp: 85 };
+
+    // ---- life sim: gather resources -> build home stations -> craft gear ----
+    if (bot.phase === "gather") {
+      bot.work = bot.work || 0;
+      if (bot.work > 28 || remain < 540) { bot.phase = "build"; return null; }
+      if (bot.harvestT > 0) return { x: bot.x, y: bot.y, sp: 0 }; // busy "harvesting"
+      if (bot.t <= 0 || dist2(bot.x, bot.y, bot.tx, bot.ty) < 20 * 20) {
+        if (Math.random() < 0.55) bot.harvestT = rand(1.6, 3.2); // stop & "harvest"
+        bot.t = rand(3, 6);
+        bot.tx = clamp(bot.home.x + rand(-520, 520), 120, WORLD.W - 120);
+        bot.ty = clamp(bot.home.y + rand(-520, 520), 120, WORLD.H - 120);
+      }
+      return { x: bot.tx, y: bot.ty, sp: 60 };
+    }
+    if (bot.phase === "build") {
+      const h = bot.home;
+      if (dist2(bot.x, bot.y, h.x, h.y) > 40 * 40) return { x: h.x, y: h.y, sp: 72 };
+      if (bot.buildT <= 0) {
+        const spots = [["table", -120, 0], ["furnace", 120, 0], ["box", 0, 120]]; // outside the future fort ring
+        if (bot.buildStep < spots.length) {
+          const sp2 = spots[bot.buildStep];
+          this.addBotBuild(sp2[0], h.x + sp2[1], h.y + sp2[2]);
+          bot.buildStep++; bot.buildT = 2.2;
+        } else bot.phase = "prep";
+      }
+      return { x: h.x, y: h.y, sp: 0 };
+    }
+    // prep: hang around the crafting table levelling gear, patch up with herbs
+    const h = bot.home, a = Date.now() / 900 + bot.wob;
+    return { x: h.x + Math.cos(a) * 40, y: h.y + Math.sin(a) * 40, sp: 30 };
+  }
+
+  botTick(dt, s) {
+    const bcn = this.beacon;
+    const remain = s ? s.remain : slotInfo().remain;
     for (const bot of this.bots) {
+      bot.hitT = Math.max(0, (bot.hitT || 0) - dt);
+      bot.fortT = Math.max(0, (bot.fortT || 0) - dt);
+      bot.contestDelay = Math.max(0, (bot.contestDelay || 0) - dt);
       bot.t -= dt;
-      if (bot.t <= 0) {
-        bot.t = rand(2, 5);
-        bot.tx = clamp(bot.x + rand(-220, 220), 100, WORLD.W - 100);
-        bot.ty = clamp(bot.y + rand(-220, 220), 100, WORLD.H - 100);
+      if (bot.harvestT > 0) { bot.harvestT -= dt; bot.work = (bot.work || 0) + dt; }
+      if (bot.phase === "build") bot.buildT = Math.max(0, (bot.buildT || 0) - dt);
+      if (bot.phase === "prep") {
+        bot.prepT += dt;                                   // crafting montage
+        while (bot.gear < BOT_GEAR.length - 1 && bot.prepT > BOT_GEAR[bot.gear + 1].t) bot.gear++;
+        if (bot.hp < bot.maxhp) bot.hp = Math.min(bot.maxhp, bot.hp + dt * 2); // herbal medicine
       }
-      const dx = bot.tx - bot.x, dy = bot.ty - bot.y, d = Math.hypot(dx, dy) || 1;
-      if (d > 4) {
-        bot.x += (dx / d) * 50 * dt;
-        bot.y += (dy / d) * 50 * dt;
-        bot.dir = dx > 2 ? 1 : dx < -2 ? -1 : bot.dir;
+      const goal = this.botGoal(bot, bcn, remain);
+      if (goal && goal.sp > 0) {
+        const dx = goal.x - bot.x, dy = goal.y - bot.y, d = Math.hypot(dx, dy) || 1;
+        // bots respect walls like monsters do (mobMove slides along them), so a
+        // player's fort genuinely holds them off until they besiege it down;
+        // slim pad lets them slip through a single broken wall tile
+        if (d > 4) this.mobMove(bot, dx / d, dy / d, goal.sp, dt, 6);
       }
+      // deadlock safety: a carrier pinned by walls (e.g. trapped inside a rival
+      // fort it breached) gives up the crate after ~5s so the round keeps moving
+      if (bcn.state === "carried" && bcn.owner === bot.id) {
+        bot._ckT = (bot._ckT || 0) + dt;
+        if (bot._ckT >= 5) {
+          if (Math.hypot(bot.x - (bot._ckX ?? bot.x), bot.y - (bot._ckY ?? bot.y)) < 15 &&
+              dist2(bot.x, bot.y, bot.home.x, bot.home.y) > 60 * 60) {
+            dropBeacon(this.beacon, bot.x, bot.y);
+            bot.contestDelay = 8; // let someone else take it this time
+            this.broadcast({ t: "event", kind: "beaconDown", data: { x: this.beacon.x, y: this.beacon.y } });
+          }
+          bot._ckT = 0; bot._ckX = bot.x; bot._ckY = bot.y;
+        }
+      } else { bot._ckT = 0; bot._ckX = bot.x; bot._ckY = bot.y; }
     }
   }
 
@@ -309,8 +497,8 @@ export class GameRoom {
     return false;
   }
 
-  mobMove(mob, sx, sy, sp, dt) {
-    const pad = (MOBS[mob.kind] || MOBS.deer).r; // collide using the body radius
+  mobMove(mob, sx, sy, sp, dt, pad) {
+    if (pad == null) pad = (MOBS[mob.kind] || MOBS.deer).r; // collide using the body radius
     const nx = clamp(mob.x + sx * sp * dt, 40, WORLD.W - 40);
     const ny = clamp(mob.y + sy * sp * dt, 40, WORLD.H - 40);
     let mx = false, my = false;
@@ -393,7 +581,9 @@ export class GameRoom {
     }
     if (winner) {
       // MVP: server doesn't track inventories, so use a flat victory value.
-      this.board.push(winner.name, 200);
+      // Bot wins only count when a human was around to be beaten — otherwise
+      // an idle server would fill the board with bot names overnight.
+      if (winner.isHuman || this.players.size > 0) this.board.push(winner.name, 200);
       this.broadcast({
         t: "event", kind: "win",
         data: { winnerId: winner.id, winnerName: winner.name, isHuman: winner.isHuman, val: 200 },
@@ -436,9 +626,19 @@ export class GameRoom {
     }
 
     const ev = advanceAirdrop(this.beacon, s.remain);
-    if (ev) this.broadcast({ t: "event", kind: ev, data: { x: this.beacon.x, y: this.beacon.y } });
+    if (ev) {
+      this.broadcast({ t: "event", kind: ev, data: { x: this.beacon.x, y: this.beacon.y } });
+      // bots hesitate a few seconds after the crate lands so humans get a shot
+      if (ev === "landed") for (const b of this.bots) b.contestDelay = rand(3, 8);
+    }
 
-    this.botTick(dt);
+    // replace a killed bot after a delay (refreshBots respects human count)
+    if (this._botRespawnAt && nowMs >= this._botRespawnAt) {
+      this._botRespawnAt = null;
+      this.refreshBots();
+    }
+
+    this.botTick(dt, s);
     this.mobTick(dt, s);
     this.broadcastSnapshot(s);
   }
@@ -448,10 +648,15 @@ export class GameRoom {
     for (const [id, p] of this.players) {
       players.push({ id, name: p.name, x: Math.round(p.x), y: Math.round(p.y), dir: p.dir, hp: p.hp, carrying: p.carrying, skin: p.skin || 0 });
     }
-    const bots = this.bots.map((b) => ({
-      id: b.id, name: b.name, x: Math.round(b.x), y: Math.round(b.y), dir: b.dir,
-      hp: b.hp, maxhp: b.maxhp, col: b.col, carrying: this.beacon.owner === b.id && this.beacon.state === "carried",
-    }));
+    const bots = this.bots.map((b) => {
+      const g = BOT_GEAR[b.gear] || BOT_GEAR[0];
+      return {
+        id: b.id, name: b.name, x: Math.round(b.x), y: Math.round(b.y), dir: b.dir,
+        hp: Math.round(b.hp), maxhp: b.maxhp, col: b.col,
+        carrying: this.beacon.owner === b.id && this.beacon.state === "carried",
+        w: g.w, bd: g.bd, hd: g.hd, // crafted gear (visible weapon + armor)
+      };
+    });
     const mobs = this.mobs.map((m) => ({
       id: m.id, kind: m.kind, x: Math.round(m.x), y: Math.round(m.y), dir: m.dir, hp: Math.round(m.hp), maxhp: m.maxhp,
       ag: m.aggroT > 0 ? 1 : 0, // 1 = provoked (will attack); 0 = passive

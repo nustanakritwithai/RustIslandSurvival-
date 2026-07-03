@@ -36,7 +36,7 @@
     for(var i=0;i<players.length;i++){ var pl=players[i]; if(pl.id===NET.id)continue; seen[pl.id]=1; var e=NET.players.get(pl.id); if(!e){e={x:pl.x,y:pl.y};NET.players.set(pl.id,e);} if(e.hp!=null&&pl.hp<e.hp)e.dmgT=.3; e.id=pl.id;e.name=pl.name;e.tx=pl.x;e.ty=pl.y;e.dir=pl.dir;e.hp=pl.hp;e.maxhp=100;e.carrying=pl.carrying;e.col=e.col||humanCol(pl.id);e.skin=pl.skin; }
     NET.players.forEach(function(v,k){ if(!seen[k]) NET.players.delete(k); });
     var bseen={}, bots=Array.isArray(m.bots)?m.bots:[];
-    for(var j=0;j<bots.length;j++){ var bt=bots[j]; bseen[bt.id]=1; var b=NET.botMap.get(bt.id); if(!b){b={x:bt.x,y:bt.y};NET.botMap.set(bt.id,b);} if(b.hp!=null&&bt.hp<b.hp)b.dmgT=.3; b.id=bt.id;b.name=bt.name;b.tx=bt.x;b.ty=bt.y;b.dir=bt.dir;b.hp=bt.hp;b.maxhp=bt.maxhp||90;b.col=bt.col;b.carrying=bt.carrying; }
+    for(var j=0;j<bots.length;j++){ var bt=bots[j]; bseen[bt.id]=1; var b=NET.botMap.get(bt.id); if(!b){b={x:bt.x,y:bt.y};NET.botMap.set(bt.id,b);} if(b.hp!=null&&bt.hp<b.hp)b.dmgT=.3; b.id=bt.id;b.name=bt.name;b.tx=bt.x;b.ty=bt.y;b.dir=bt.dir;b.hp=bt.hp;b.maxhp=bt.maxhp||90;b.col=bt.col;b.carrying=bt.carrying;b.netBot=true;b.w=bt.w;b.bd=bt.bd;b.hd=bt.hd; }
     NET.botMap.forEach(function(v,k){ if(!bseen[k]) NET.botMap.delete(k); });
     if(m.mobs) applyMobs(m.mobs);
   }
@@ -51,6 +51,10 @@
     if(m.kind==="airdrop"){ if(typeof toast==="function")toast("📡 AIRDROP กำลังมา! ตัวส่งสัญญาณจะตกกลางเกาะ"); }
     else if(m.kind==="landed"){ if(typeof toast==="function")toast("📦 Airdrop ตกแล้ว! ไปเก็บ 📡 ก่อนคนอื่น"); }
     else if(m.kind==="beaconDown"){ if(typeof toast==="function")toast("💥 ตัวส่งสัญญาณหลุดแล้ว! รีบไปยึดกลับมา"); }
+    else if(m.kind==="bot"&&d.op==="del"){ NET.botMap.delete(d.id);
+      if(typeof spawnFx==="function")spawnFx(d.x,d.y,8,"#c4452f",{spMin:40,spMax:130,grav:140,lifeMin:.25,lifeMax:.5});
+      if(typeof toast==="function"&&d.name)toast("⚔️ "+d.name+" ถูกกำจัด");
+      if(d.killer&&d.killer===NET.id&&Array.isArray(d.loot)&&typeof G!=="undefined"&&G.loot){ G.loot.push({x:d.x,y:d.y,items:d.loot,t:90}); if(G.stats)G.stats.kills++; } }
     else if(m.kind==="win") onServerWin(d);
     else if(m.kind==="node") setNodeDead(d.i,d.dead);
     else if(m.kind==="build"){ if(d.op==="add")addNetBuild(d.b); else if(d.op==="del")delNetBuild(d.id); }
@@ -140,7 +144,7 @@
 
     var baseDrawDeco=drawDeco;drawDeco=function(){baseDrawDeco();drawThaiGroundDetails();};
     rplayer=function(sx,sy){var p=G.player||{};var weapon=G.equip&&G.equip.hand?G.equip.hand.id:"";var SK=(window.SKINS&&window.SKINS[(G.skin||0)])||{shirt:"#294d61",pant:"#2b2a28"};var eq=G.equip||{};drawThaiHuman(p,sx,sy,{shirt:SK.shirt,pant:SK.pant,weapon:weapon,hatScale:1,body:eq.body&&eq.body.id,head:eq.head&&eq.head.id});drawNearbyCanopyOverlay();};
-    rbot=function(o,sx,sy){var SK=(window.SKINS&&o&&o.skin!=null)?window.SKINS[o.skin]:null;drawThaiHuman(o||{},sx,sy,{shirt:SK?SK.shirt:"#3e5f43",pant:SK?SK.pant:"#342a23",weapon:"",skin:"#e3b184",hatScale:.86});
+    rbot=function(o,sx,sy){var SK=(window.SKINS&&o&&o.skin!=null)?window.SKINS[o.skin]:null;drawThaiHuman(o||{},sx,sy,{shirt:SK?SK.shirt:"#3e5f43",pant:SK?SK.pant:"#342a23",weapon:(o&&o.w)||"",body:o&&o.bd,head:o&&o.hd,skin:"#e3b184",hatScale:.86});
       var lift=o&&o.carrying?14:0;
       if(o&&o.name){ctx.fillStyle="#cdbfa3";ctx.font="8px sans-serif";ctx.textAlign="center";ctx.fillText(o.name,sx,sy-32-lift);ctx.textAlign="left";}
       if(o&&o.hp!=null&&o.maxhp&&o.hp<o.maxhp){ctx.fillStyle="rgba(0,0,0,.5)";ctx.fillRect(sx-12,sy-28-lift,24,3);ctx.fillStyle="#5fd17a";ctx.fillRect(sx-12,sy-28-lift,24*Math.max(0,Math.min(1,o.hp/o.maxhp)),3);}};

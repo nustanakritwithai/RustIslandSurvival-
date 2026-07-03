@@ -1128,10 +1128,11 @@ function botTick(dt){
     }
   }
 }
-function nearestEnemyMelee(){ // nearest wolf or bot within melee reach
+function nearestEnemyMelee(){ // nearest wolf or bot (local or server) within melee reach
   const p=G.player;let best=null,bd=46*46;
   for(const w of G.wolves){const d=dist2(w.x,w.y,p.x,p.y);if(d<bd){bd=d;best=w;}}
   for(const b of G.bots){const d=dist2(b.x,b.y,p.x,p.y);if(d<bd){bd=d;best=b;}}
+  if(window.NET&&NET.connected)NET.botMap.forEach(b=>{const d=dist2(b.x,b.y,p.x,p.y);if(d<bd){bd=d;best=b;}});
   return best;
 }
 /* ---------- shared winner leaderboard ---------- */
@@ -1231,8 +1232,11 @@ function attack(){
   p.atkT=0.22;
   const w=nearestEnemyMelee();
   if(w){ensureHandWeapon();const hd2=handDef();if(hd2&&hd2.ranged){if(p.shootCd<=0)fireRanged();return;}
-    const dmg=Math.round((handWeaponDmg()||2)*((G.player.buffs&&G.player.buffs.power)?1+BUFFS.power.dmg:1));w.hp-=dmg;w.dmgT=0.25;sfx("hit");reportMobHit(w,dmg);spawnDmg(w.x,w.y-12,dmg,"#ffe08a");addShake(2.5);
-    const d=Math.hypot(w.x-p.x,w.y-p.y)||1;w.x+=(w.x-p.x)/d*22;w.y+=(w.y-p.y)/d*22;
+    const dmg=Math.round((handWeaponDmg()||2)*((G.player.buffs&&G.player.buffs.power)?1+BUFFS.power.dmg:1));
+    if(w.netBot){netSend({t:"botHit",id:w.id,dmg});w.dmgT=0.25;} // server-owned rival: server adjudicates
+    else{w.hp-=dmg;w.dmgT=0.25;reportMobHit(w,dmg);
+      const d=Math.hypot(w.x-p.x,w.y-p.y)||1;w.x+=(w.x-p.x)/d*22;w.y+=(w.y-p.y)/d*22;}
+    sfx("hit");spawnDmg(w.x,w.y-12,dmg,"#ffe08a");addShake(2.5);
     p.stam=clamp(p.stam-4,0,100);
     spawnFx(w.x,w.y,6,"#ffd27a",{spMin:60,spMax:150,grav:120,lifeMin:0.2,lifeMax:0.4,rMin:1.5,rMax:3});
     spawnFx(w.x,w.y,4,"#c4452f",{spMin:40,spMax:110,grav:140,lifeMin:0.25,lifeMax:0.45});
@@ -1254,6 +1258,7 @@ function aimAngle(rng){ // forced drag-aim wins, then steering, then auto-snap
   if(p.moving)return p.aim;
   let tx=null,ty=null,bd=rng*rng;
   for(const w of G.wolves){const d=dist2(w.x,w.y,p.x,p.y);if(d<bd){bd=d;tx=w.x;ty=w.y;}}
+  if(window.NET&&NET.connected)NET.botMap.forEach(b=>{const d=dist2(b.x,b.y,p.x,p.y);if(d<bd){bd=d;tx=b.x;ty=b.y;}});
   return tx!=null?Math.atan2(ty-p.y,tx-p.x):p.aim;
 }
 function fireRanged(){
@@ -1303,6 +1308,7 @@ function boom(pr){
   const r=pr.blast||55;
   for(const w of G.wolves){if(dist2(w.x,w.y,pr.x,pr.y)<r*r){w.hp-=pr.bd||60;w.dmgT=0.3;reportMobHit(w,pr.bd||60);}}
   for(const b of G.bots){if(b.hp>0&&dist2(b.x,b.y,pr.x,pr.y)<r*r){b.hp-=pr.bd||60;b.dmgT=0.3;}}
+  if(window.NET&&NET.connected)NET.botMap.forEach(b=>{if(dist2(b.x,b.y,pr.x,pr.y)<r*r){netSend({t:"botHit",id:b.id,dmg:pr.bd||60});b.dmgT=0.3;}});
   for(let bi=G.buildings.length-1;bi>=0;bi--){const bd=G.buildings[bi];
     if(dist2(bd.x,bd.y,pr.x,pr.y)<(r+8)*(r+8)){bd.hp-=(pr.bd||60)*1.2;
       if(bd.hp<=0){if(bd.net&&bd.nid!=null)netSend({t:"build",op:"del",id:bd.nid});G.buildings.splice(bi,1);}}}
@@ -1330,6 +1336,9 @@ function projTick(dt){
       spawnFx(w.x,w.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;break;}}
     if(!hitWolf)for(const b of G.bots){if(b.hp>0&&dist2(b.x,b.y,pr.x,pr.y)<18*18){b.hp-=pr.dmg;b.dmgT=0.25;
       spawnFx(b.x,b.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;break;}}
+    if(!hitWolf&&window.NET&&NET.connected){let hb=null;NET.botMap.forEach(b=>{if(!hb&&dist2(b.x,b.y,pr.x,pr.y)<18*18)hb=b;});
+      if(hb){netSend({t:"botHit",id:hb.id,dmg:pr.dmg});hb.dmgT=0.25;spawnDmg(hb.x,hb.y-12,pr.dmg,"#ffe08a");
+        spawnFx(hb.x,hb.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;}}
     if(hitWolf){G.projectiles.splice(i,1);}
     else if(pr.t>=pr.life||wall||oob){
       if(pr.dropId&&!wall&&!oob)G.loot.push({x:pr.x,y:pr.y,items:[{id:pr.dropId,n:1}],t:90,arrow:true});

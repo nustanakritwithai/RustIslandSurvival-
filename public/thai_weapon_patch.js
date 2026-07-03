@@ -88,7 +88,7 @@
 
     var oldRPlayer = rplayer, oldRBot = rbot;
     rplayer=function(sx,sy){ var p=G.player||{}; var eq=G.equip||{}; var weapon=eq.hand?eq.hand.id:""; var SK=(window.SKINS&&window.SKINS[(G.skin||0)])||{shirt:"#294d61",pant:"#2b2a28"}; drawThaiHuman(p,sx,sy,{shirt:SK.shirt,pant:SK.pant,weapon:weapon,hatScale:1,body:eq.body&&eq.body.id,head:eq.head&&eq.head.id}); drawNearbyCanopyOverlay(); };
-    rbot=function(o,sx,sy){ var SK=(window.SKINS&&o&&o.skin!=null)?window.SKINS[o.skin]:null; drawThaiHuman(o||{},sx,sy,{shirt:SK?SK.shirt:"#3e5f43",pant:SK?SK.pant:"#342a23",weapon:"",skin:"#e3b184",hatScale:.86});
+    rbot=function(o,sx,sy){ var SK=(window.SKINS&&o&&o.skin!=null)?window.SKINS[o.skin]:null; drawThaiHuman(o||{},sx,sy,{shirt:SK?SK.shirt:"#3e5f43",pant:SK?SK.pant:"#342a23",weapon:(o&&o.w)||"",body:o&&o.bd,head:o&&o.hd,skin:"#e3b184",hatScale:.86});
       var lift=o&&o.carrying?14:0;
       if(o&&o.name){ctx.fillStyle="#cdbfa3";ctx.font="8px sans-serif";ctx.textAlign="center";ctx.fillText(o.name,sx,sy-32-lift);ctx.textAlign="left";}
       if(o&&o.hp!=null&&o.maxhp&&o.hp<o.maxhp){ctx.fillStyle="rgba(0,0,0,.5)";ctx.fillRect(sx-12,sy-28-lift,24,3);ctx.fillStyle="#5fd17a";ctx.fillRect(sx-12,sy-28-lift,24*Math.max(0,Math.min(1,o.hp/o.maxhp)),3);} };
