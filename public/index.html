@@ -1149,11 +1149,22 @@ function botTick(dt){
     }
   }
 }
-function nearestEnemyMelee(){ // nearest wolf or bot (local or server) within melee reach
+// PvP is on everywhere except the home base (spawn) zone — no spawn-camping. A
+// player is a valid target only when neither they nor I are standing in base.
+function pvpTargetable(e){
+  if(!e||e.hp<=0)return false;
+  if(zoneAt(G.player.x,G.player.y).nm==="ฐาน")return false;
+  if(zoneAt(e.x,e.y).nm==="ฐาน")return false;
+  return true;
+}
+function nearestEnemyMelee(){ // nearest wolf, bot, horse, or rival player within melee reach
   const p=G.player;let best=null,bd=46*46;
   for(const w of G.wolves){const d=dist2(w.x,w.y,p.x,p.y);if(d<bd){bd=d;best=w;}}
   for(const b of G.bots){const d=dist2(b.x,b.y,p.x,p.y);if(d<bd){bd=d;best=b;}}
-  if(window.NET&&NET.connected)NET.botMap.forEach(b=>{const d=dist2(b.x,b.y,p.x,p.y);if(d<bd){bd=d;best=b;}});
+  if(window.NET&&NET.connected){
+    NET.botMap.forEach(b=>{const d=dist2(b.x,b.y,p.x,p.y);if(d<bd){bd=d;best=b;}});
+    NET.players.forEach(e=>{if(!pvpTargetable(e))return;const d=dist2(e.x,e.y,p.x,p.y);if(d<bd){bd=d;best=e;}});
+  }
   for(const h of G.horses){const d=dist2(h.x,h.y,p.x,p.y);if(d<bd){bd=d;best=h;best._horse=true;}}
   return best;
 }
@@ -1258,7 +1269,8 @@ function attack(){
   const w=nearestEnemyMelee();
   if(w){ensureHandWeapon();const hd2=handDef();if(hd2&&hd2.ranged){if(p.shootCd<=0)fireRanged();return;}
     const dmg=Math.round((handWeaponDmg()||2)*((G.player.buffs&&G.player.buffs.power)?1+BUFFS.power.dmg:1));
-    if(w.netBot){netSend({t:"botHit",id:w.id,dmg});w.dmgT=0.25;} // server-owned rival: server adjudicates
+    if(w.netPlayer){netSend({t:"pvp",id:w.id,dmg});w.dmgT=0.25;} // rival player: server relays to them
+    else if(w.netBot){netSend({t:"botHit",id:w.id,dmg});w.dmgT=0.25;} // server-owned bot: server adjudicates
     else{w.hp-=dmg;w.dmgT=0.25;reportMobHit(w,dmg);if(w._horse)spookHorse(w);
       const d=Math.hypot(w.x-p.x,w.y-p.y)||1;w.x+=(w.x-p.x)/d*22;w.y+=(w.y-p.y)/d*22;}
     sfx("hit");spawnDmg(w.x,w.y-12,dmg,"#ffe08a");addShake(2.5);
@@ -1283,7 +1295,10 @@ function aimAngle(rng){ // forced drag-aim wins, then steering, then auto-snap
   if(p.moving)return p.aim;
   let tx=null,ty=null,bd=rng*rng;
   for(const w of G.wolves){const d=dist2(w.x,w.y,p.x,p.y);if(d<bd){bd=d;tx=w.x;ty=w.y;}}
-  if(window.NET&&NET.connected)NET.botMap.forEach(b=>{const d=dist2(b.x,b.y,p.x,p.y);if(d<bd){bd=d;tx=b.x;ty=b.y;}});
+  if(window.NET&&NET.connected){
+    NET.botMap.forEach(b=>{const d=dist2(b.x,b.y,p.x,p.y);if(d<bd){bd=d;tx=b.x;ty=b.y;}});
+    NET.players.forEach(e=>{if(!pvpTargetable(e))return;const d=dist2(e.x,e.y,p.x,p.y);if(d<bd){bd=d;tx=e.x;ty=e.y;}});
+  }
   return tx!=null?Math.atan2(ty-p.y,tx-p.x):p.aim;
 }
 function fireRanged(){
@@ -1339,7 +1354,10 @@ function boom(pr){
   const r=pr.blast||55;
   for(const w of G.wolves){if(dist2(w.x,w.y,pr.x,pr.y)<r*r){w.hp-=pr.bd||60;w.dmgT=0.3;reportMobHit(w,pr.bd||60);}}
   for(const b of G.bots){if(b.hp>0&&dist2(b.x,b.y,pr.x,pr.y)<r*r){b.hp-=pr.bd||60;b.dmgT=0.3;}}
-  if(window.NET&&NET.connected)NET.botMap.forEach(b=>{if(dist2(b.x,b.y,pr.x,pr.y)<r*r){netSend({t:"botHit",id:b.id,dmg:pr.bd||60});b.dmgT=0.3;}});
+  if(window.NET&&NET.connected){
+    NET.botMap.forEach(b=>{if(dist2(b.x,b.y,pr.x,pr.y)<r*r){netSend({t:"botHit",id:b.id,dmg:pr.bd||60});b.dmgT=0.3;}});
+    NET.players.forEach(e=>{if(pvpTargetable(e)&&dist2(e.x,e.y,pr.x,pr.y)<r*r){netSend({t:"pvp",id:e.id,dmg:pr.bd||60});e.dmgT=0.3;}});
+  }
   for(const h of G.horses){if(dist2(h.x,h.y,pr.x,pr.y)<r*r){h.hp-=pr.bd||60;h.dmgT=0.3;}}
   for(let bi=G.buildings.length-1;bi>=0;bi--){const bd=G.buildings[bi];
     if(dist2(bd.x,bd.y,pr.x,pr.y)<(r+8)*(r+8)){bd.hp-=(pr.bd||60)*(pr.stuck?3.2:1.2); // a charge stuck on the wall blasts it much harder
@@ -1373,6 +1391,9 @@ function projTick(dt){
     if(!hitWolf&&window.NET&&NET.connected){let hb=null;NET.botMap.forEach(b=>{if(!hb&&dist2(b.x,b.y,pr.x,pr.y)<18*18)hb=b;});
       if(hb){netSend({t:"botHit",id:hb.id,dmg:pr.dmg});hb.dmgT=0.25;spawnDmg(hb.x,hb.y-12,pr.dmg,"#ffe08a");
         spawnFx(hb.x,hb.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;}}
+    if(!hitWolf&&window.NET&&NET.connected){let hp2=null;NET.players.forEach(e=>{if(!hp2&&pvpTargetable(e)&&dist2(e.x,e.y,pr.x,pr.y)<18*18)hp2=e;});
+      if(hp2){netSend({t:"pvp",id:hp2.id,dmg:pr.dmg});hp2.dmgT=0.25;spawnDmg(hp2.x,hp2.y-12,pr.dmg,"#ffe08a");
+        spawnFx(hp2.x,hp2.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;}}
     if(!hitWolf)for(const h of G.horses){if(dist2(h.x,h.y,pr.x,pr.y)<20*20){h.hp-=pr.dmg;h.dmgT=0.25;h._horse=true;spookHorse(h);
       spawnDmg(h.x,h.y-14,pr.dmg,"#ffe08a");spawnFx(h.x,h.y,5,"#ffd27a",{spMin:40,spMax:120,grav:120});hitWolf=true;break;}}
     if(hitWolf){G.projectiles.splice(i,1);}

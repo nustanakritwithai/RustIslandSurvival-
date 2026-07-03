@@ -33,7 +33,7 @@
   function applySnapshot(m){
     NET.serverBeacon=m.beacon; NET.serverRound=m.slot; if(m.slot) applyWorldSeed(m.slot.seed);
     var seen={}, players=Array.isArray(m.players)?m.players:[];
-    for(var i=0;i<players.length;i++){ var pl=players[i]; if(pl.id===NET.id)continue; seen[pl.id]=1; var e=NET.players.get(pl.id); if(!e){e={x:pl.x,y:pl.y};NET.players.set(pl.id,e);} if(e.hp!=null&&pl.hp<e.hp)e.dmgT=.3; e.id=pl.id;e.name=pl.name;e.tx=pl.x;e.ty=pl.y;e.dir=pl.dir;e.hp=pl.hp;e.maxhp=100;e.carrying=pl.carrying;e.col=e.col||humanCol(pl.id);e.skin=pl.skin; }
+    for(var i=0;i<players.length;i++){ var pl=players[i]; if(pl.id===NET.id)continue; seen[pl.id]=1; var e=NET.players.get(pl.id); if(!e){e={x:pl.x,y:pl.y};NET.players.set(pl.id,e);} if(e.hp!=null&&pl.hp<e.hp)e.dmgT=.3; e.id=pl.id;e.name=pl.name;e.tx=pl.x;e.ty=pl.y;e.dir=pl.dir;e.hp=pl.hp;e.maxhp=100;e.carrying=pl.carrying;e.col=e.col||humanCol(pl.id);e.skin=pl.skin;e.netPlayer=true; }
     NET.players.forEach(function(v,k){ if(!seen[k]) NET.players.delete(k); });
     var bseen={}, bots=Array.isArray(m.bots)?m.bots:[];
     for(var j=0;j<bots.length;j++){ var bt=bots[j]; bseen[bt.id]=1; var b=NET.botMap.get(bt.id); if(!b){b={x:bt.x,y:bt.y};NET.botMap.set(bt.id,b);} if(b.hp!=null&&bt.hp<b.hp)b.dmgT=.3; b.id=bt.id;b.name=bt.name;b.tx=bt.x;b.ty=bt.y;b.dir=bt.dir;b.hp=bt.hp;b.maxhp=bt.maxhp||90;b.col=bt.col;b.carrying=bt.carrying;b.netBot=true;b.w=bt.w;b.bd=bt.bd;b.hd=bt.hd; }
@@ -51,6 +51,13 @@
     if(m.kind==="airdrop"){ if(typeof toast==="function")toast("📡 AIRDROP กำลังมา! ตัวส่งสัญญาณจะตกกลางเกาะ"); }
     else if(m.kind==="landed"){ if(typeof toast==="function")toast("📦 Airdrop ตกแล้ว! ไปเก็บ 📡 ก่อนคนอื่น"); }
     else if(m.kind==="beaconDown"){ if(typeof toast==="function")toast("💥 ตัวส่งสัญญาณหลุดแล้ว! รีบไปยึดกลับมา"); }
+    else if(m.kind==="hit"){ // another player hit ME; apply it locally (armor etc. included)
+      if(typeof G!=="undefined"&&!G.dead&&G.round&&G.round.active&&typeof damagePlayer==="function"){
+        if(!(typeof zoneAt==="function"&&zoneAt(G.player.x,G.player.y).nm==="ฐาน")){
+          damagePlayer(+d.dmg||0, d.x!=null?d.x:G.player.x-1, d.y!=null?d.y:G.player.y);
+          if(typeof toast==="function"&&d.name)toast("⚔️ โดน "+d.name+" โจมตี!");
+        }
+      } }
     else if(m.kind==="bot"&&d.op==="del"){ NET.botMap.delete(d.id);
       if(typeof spawnFx==="function")spawnFx(d.x,d.y,8,"#c4452f",{spMin:40,spMax:130,grav:140,lifeMin:.25,lifeMax:.5});
       if(typeof toast==="function"&&d.name)toast("⚔️ "+d.name+" ถูกกำจัด");

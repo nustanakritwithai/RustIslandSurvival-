@@ -230,6 +230,27 @@ export class GameRoom {
           this._botRespawnAt = Date.now() + 25000; // a fresh rival lands later
         }
       }
+    } else if (m.t === "pvp") {
+      // player-vs-player hit report. The server validates and relays it to the
+      // victim, whose client applies the damage (player HP stays client-owned,
+      // same as monster damage). Home base is a safe zone.
+      const nowT = Date.now();
+      const dmg = clamp(+m.dmg || 0, 0, 120);
+      const tgt = this.players.get(m.id);
+      if (!tgt || m.id === ws.id || dmg <= 0 || tgt.hp <= 0) return;
+      if (dist2(tgt.x, tgt.y, p.x, p.y) > 900 * 900) return; // beyond max weapon range
+      const base = ZONES[0];
+      const inBase = (q) => q.x >= base.x && q.x < base.x + base.w && q.y >= base.y && q.y < base.y + base.h;
+      if (inBase(p) || inBase(tgt)) return;
+      // burst-friendly rate cap (shotgun pellets) that still stops hit spam
+      p.pvpWin = (p.pvpWin || []).filter((t2) => nowT - t2 < 700);
+      if (p.pvpWin.length >= 6) return;
+      p.pvpWin.push(nowT);
+      if (tgt.ws.readyState === 1) {
+        try {
+          tgt.ws.send(encode({ t: "event", kind: "hit", data: { from: ws.id, name: p.name, dmg, x: Math.round(p.x), y: Math.round(p.y) } }));
+        } catch { /* ignore */ }
+      }
     } else if (m.t === "ping") {
       ws.send(encode({ t: "pong" }));
     }

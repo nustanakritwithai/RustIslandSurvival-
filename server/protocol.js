@@ -27,13 +27,14 @@ Client -> Server
   { t:"build", op:"add"|"del", bt?, x?, y?, id? }
   { t:"mobHit", id, dmg }
   { t:"botHit", id, dmg }
+  { t:"pvp", id, dmg }
   { t:"ping" }
 
 Server -> Client
   { t:"welcome", v, id, slot:{remain,id,seed}, board, nodes, builds }
   { t:"snapshot", now, slot:{remain,id,seed}, players:[...], bots:[...], beacon, mobs }
     bots[] carry w/bd/hd (crafted weapon + armor ids) for rendering
-  { t:"event", kind:"airdrop"|"landed"|"beaconDown"|"win"|"reset"|"node"|"build"|"mob"|"bot", data }
+  { t:"event", kind:"airdrop"|"landed"|"beaconDown"|"win"|"reset"|"node"|"build"|"mob"|"bot"|"hit", data }
   { t:"board", winners:[...] }
   { t:"pong" }
 */
