@@ -185,25 +185,18 @@
   #cover .reset{margin-top:14px;}
   .kbd{display:none;}
   @media(min-width:760px){.kbd{display:inline;opacity:.6;}}
-  #dev{position:fixed;left:10px;top:80px;z-index:25;font-family:var(--disp);font-size:10px;letter-spacing:1.5px;
-    background:rgba(20,18,13,.7);color:#8f867a;border:1px solid rgba(0,0,0,.45);border-radius:4px;padding:3px 9px;cursor:pointer;}
-  #dev:active{color:var(--paper);}
-  #fs{position:fixed;left:62px;top:80px;z-index:25;background:rgba(20,18,13,.7);color:#cdbfa3;
+  #fs{position:fixed;left:10px;top:80px;z-index:25;background:rgba(20,18,13,.7);color:#cdbfa3;
     border:1px solid rgba(0,0,0,.45);border-radius:4px;width:30px;height:24px;font-size:13px;cursor:pointer;line-height:1;}
   #fs:active{color:var(--paper);}
-  #snd{position:fixed;left:96px;top:80px;z-index:25;background:rgba(20,18,13,.7);color:#cdbfa3;
+  #snd{position:fixed;left:44px;top:80px;z-index:25;background:rgba(20,18,13,.7);color:#cdbfa3;
     border:1px solid rgba(0,0,0,.45);border-radius:4px;width:30px;height:24px;font-size:13px;cursor:pointer;line-height:1;}
   #snd:active{color:var(--paper);}
-  #mus{position:fixed;left:130px;top:80px;z-index:25;background:rgba(20,18,13,.7);color:#cdbfa3;
+  #mus{position:fixed;left:78px;top:80px;z-index:25;background:rgba(20,18,13,.7);color:#cdbfa3;
     border:1px solid rgba(0,0,0,.45);border-radius:4px;width:30px;height:24px;font-size:13px;cursor:pointer;line-height:1;}
   #mus:active{color:var(--paper);}
-  #map{position:fixed;left:164px;top:80px;z-index:25;background:rgba(20,18,13,.7);color:#cdbfa3;
+  #map{position:fixed;left:112px;top:80px;z-index:25;background:rgba(20,18,13,.7);color:#cdbfa3;
     border:1px solid rgba(0,0,0,.45);border-radius:4px;width:30px;height:24px;font-size:13px;cursor:pointer;line-height:1;}
   #map:active{color:var(--paper);}
-  .dbg{display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center;margin-bottom:9px;}
-  .dbg label{font-size:11px;letter-spacing:.3px;}
-  .dbg .v{font-family:var(--disp);font-size:12px;color:var(--amber);text-align:right;min-width:42px;}
-  .dbg input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--amber);margin:0;height:20px;}
 
   /* ---- tutorial quest ---- */
   #tut{position:fixed;left:10px;top:164px;z-index:24;width:198px;background:rgba(20,18,13,.88);
@@ -253,7 +246,6 @@
 
 <div id="ctx"><div class="rnd hub" id="ctx-round">ที่ฐาน</div><div class="zn" id="ctx-zn">ฐาน</div><div id="ctx-clock">วัน 1 · เช้า</div></div>
 <canvas id="mini" width="120" height="120"></canvas>
-<button id="dev">DEV</button>
 <button id="fs" title="เต็มจอ">⛶</button>
 <button id="snd" title="เสียง">🔊</button>
 <button id="mus" title="ดนตรี">🎵</button>
@@ -1914,49 +1906,6 @@ function openBuild(){
   $("rs").onclick=()=>{if(confirm("ล้างฐาน กล่อง และ save ทั้งหมด?"))hardReset();};
 }
 
-/* ---------- debug / balance panel ---------- */
-const DBG_FIELDS=[
-  {k:"roundDur",  nm:"ความยาวรอบ (วิ)",      min:60, max:900, step:30, fix:0},
-  {k:"wolfRate",  nm:"หมาป่า · อัตราเกิด",    min:0,  max:3,   step:0.1,fix:1},
-  {k:"wolfSpeed", nm:"ความเร็วหมาป่า",        min:0.3,max:2,   step:0.1,fix:1},
-  {k:"hungerRate",nm:"หิวเร็ว (เท่า)",         min:0,  max:3,   step:0.1,fix:1},
-  {k:"thirstRate",nm:"กระหายเร็ว (เท่า)",      min:0,  max:3,   step:0.1,fix:1},
-  {k:"carryMax",  nm:"น้ำหนักสูงสุด (กก.)",    min:10, max:120, step:5,  fix:0},
-  {k:"durLoss",   nm:"เครื่องมือสึก (เท่า)",   min:0,  max:3,   step:0.25,fix:2},
-  {k:"valueMult", nm:"มูลค่าทรัพยากร (เท่า)",  min:0.5,max:3,   step:0.1,fix:1},
-  {k:"spawnRate", nm:"ความถี่ทรัพยากร (เท่า)", min:0.3,max:2.5, step:0.1,fix:1},
-  {k:"dropEquipOnDeath", nm:"ตายแล้วของสวมตก (1=ตก)", min:0,max:1, step:1, fix:0},
-  {k:"captureWindow", nm:"ช่วงยึด beacon (วินาที)", min:60,max:240, step:10, fix:0},
-];
-const CFG_DEFAULT=Object.assign({},CFG);
-function openDebug(){
-  G.paused=true;const el=$("sheet");
-  el.innerHTML=`<span class="x" onclick="closePanel()">×</span>
-    <h2>Debug · Balance</h2><div class="hint">ปรับค่าแล้วเห็นผลทันที (ยกเว้น "ความถี่ทรัพยากร" ต้องกดสร้างแผนที่ใหม่ · ความยาวรอบมีผลรอบถัดไป)</div>
-    <div id="dbg-list"></div>
-    <div style="display:flex;gap:8px;margin-top:6px">
-      <button class="mb" style="flex:1;height:34px" onclick="debugRebuild()">สร้างแผนที่ใหม่</button>
-      <button class="mb" style="flex:1;height:34px" onclick="resetCFG();openDebug()">รีเซ็ตค่า</button>
-    </div>`;
-  const wrap=$("dbg-list");
-  DBG_FIELDS.forEach(f=>{
-    const row=document.createElement("div");row.className="dbg";
-    row.innerHTML=`<label>${f.nm}</label><span class="v" id="dv-${f.k}">${(+CFG[f.k]).toFixed(f.fix)}</span>
-      <input type="range" min="${f.min}" max="${f.max}" step="${f.step}" value="${CFG[f.k]}">`;
-    const inp=row.querySelector("input");
-    inp.oninput=()=>{CFG[f.k]=parseFloat(inp.value);$("dv-"+f.k).textContent=(+CFG[f.k]).toFixed(f.fix);
-      if(f.k==="roundDur"&&!G.round.active)G.round.dur=CFG.roundDur;};
-    wrap.appendChild(row);
-  });
-  $("panel").classList.add("on");
-}
-function resetCFG(){Object.assign(CFG,CFG_DEFAULT);toast("รีเซ็ตค่าบาลานซ์แล้ว");}
-// rebuilding with local RNG would desync node indices from the shared server world
-function debugRebuild(){
-  if(window.NET&&NET.connected){toast("ออนไลน์อยู่ — แผนที่ต้องตรงกับเซิร์ฟเวอร์ (รีเซ็ตเองทุกรอบ)");return;}
-  buildWorld();toast("สร้างแผนที่ใหม่แล้ว");
-}
-
 /* ---------- tutorial quest chain (new-player onboarding; client-only) ---------- */
 function nearestNodeWhere(pred){let best=null,bd=1e12;const p=G.player;
   for(const n of G.nodes){if(n.dead||!pred(n.type))continue;const d=dist2(n.x,n.y,p.x,p.y);if(d<bd){bd=d;best=n;}}return best;}
@@ -2249,7 +2198,6 @@ function setupInput(){
   bind("m-inv",()=>{ if($("panel").classList.contains("on"))closePanel();else openInv();});
   bind("m-craft",()=>{ if($("panel").classList.contains("on"))closePanel();else openCraft();});
   bind("m-build",()=>{ if($("panel").classList.contains("on"))closePanel();else openBuild();});
-  bind("dev",()=>{ if($("panel").classList.contains("on"))closePanel();else openDebug();});
   bind("fs",()=>toggleFS());
   bind("snd",()=>{SND.on=!SND.on;$("snd").textContent=SND.on?"🔊":"🔇";audioInit();audioResume();if(SND.on)sfx("ui");store.set("lsi:snd",SND.on?"1":"0",false);});
   bind("mus",()=>{MUS.on=!MUS.on;$("mus").textContent=MUS.on?"🎵":"🎶̶";audioInit();audioResume();if(MUS.on&&G.round.active)musicStart();else musicStop();store.set("lsi:mus",MUS.on?"1":"0",false);});
